@@ -35,6 +35,9 @@ FantasyPrem/
 │   ├── tests/
 │   ├── requirements.txt
 │   └── .env.example
+├── supabase/
+│   ├── migrations/             # schema, applied in numerical order
+│   └── README.md               # schema design notes
 └── README.md
 ```
 
@@ -54,6 +57,8 @@ FantasyPrem/
 3. Paste these into the env files below.
 
 You can skip this for now. Both services boot without Supabase configured; only auth-dependent routes will be unavailable.
+
+Then apply the schema: paste each file in `supabase/migrations/` into the Dashboard's **SQL Editor**, in numerical order. See [`supabase/README.md`](supabase/README.md) for what the tables do and why.
 
 ## 2. Backend — FastAPI
 
