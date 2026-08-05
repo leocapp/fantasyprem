@@ -40,7 +40,12 @@ export async function apiFetch<T>(path: string, options: ApiRequestOptions = {})
   const parsed: unknown = raw ? safeJsonParse(raw) : null;
 
   if (!response.ok) {
-    throw new ApiError(response.status, `${response.status} ${response.statusText}`, parsed);
+    // FastAPI puts the useful part in `detail`; surface it instead of a bare status.
+    const detail =
+      parsed && typeof parsed === "object" && "detail" in parsed
+        ? String((parsed as { detail: unknown }).detail)
+        : response.statusText;
+    throw new ApiError(response.status, `${response.status} — ${detail}`, parsed);
   }
 
   return parsed as T;

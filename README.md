@@ -134,7 +134,15 @@ Other scripts: `npm run build`, `npm run lint`, `npm run format`.
 | `SUPABASE_JWT_SECRET`       | Only for projects still on the legacy HS256 secret           |
 | `DATABASE_URL`              | Postgres connection string (unused so far)                   |
 
-## How auth will work
+## Auth
+
+Pages: `/login` (sign in and sign up share one form), `/dashboard` (protected), `/auth/confirm` (handles links in Supabase emails).
+
+**For local development**, turn off email confirmation so you can sign up instantly: Supabase Dashboard → **Authentication → Sign In / Providers → Email** → disable *Confirm email*. Leave it on in production.
+
+If you keep confirmations on, set the redirect target: **Authentication → URL Configuration** → Site URL `http://localhost:3000`, and add `http://localhost:3000/auth/confirm` to the redirect allow-list.
+
+## How auth works
 
 1. User signs in through Supabase in the Next.js app; `@supabase/ssr` stores the session in cookies and `middleware.ts` refreshes it.
 2. The frontend reads the access token from the session and sends it to FastAPI:
@@ -148,7 +156,8 @@ Other scripts: `npm run build`, `npm run lint`, `npm run format`.
 
 ## Next steps
 
-- Design the schema (users, leagues, teams, players, fixtures, scoring rules) and add migrations
-- Turn on Row Level Security in Supabase for every user-facing table
+- League creation and joining by code
 - Pick a data source for fixtures and player stats, and add an ingestion job
-- Build the scoring engine
+- Draft room (snake order, turn enforcement)
+- Lineup editor with formation validation
+- Scoring engine and weekly matchup settlement

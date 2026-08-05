@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { apiFetch, API_BASE_URL } from "@/lib/api";
 
 type HelloResponse = {
@@ -28,8 +30,14 @@ export default async function Home() {
       <div>
         <h1 className="text-4xl font-bold tracking-tight">FantasyPrem</h1>
         <p className="mt-2 text-slate-400">
-          Frontend is running. Skeleton only — no app features yet.
+          Draft real players. Score real points. Snake draft, head-to-head, Premier League.
         </p>
+        <Link
+          href="/login"
+          className="mt-4 inline-block rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500"
+        >
+          Sign in
+        </Link>
       </div>
 
       <section className="rounded-lg border border-slate-700 bg-slate-900/50 p-5">
