@@ -27,9 +27,13 @@ export default function NavBar({ email, leagues }: { email: string; leagues: Lea
           ? [{ href: `/leagues/${league.id}/draft`, label: "Draft" }]
           : []),
         ...(league.status === "active"
-          ? [{ href: `/leagues/${league.id}/free-agents`, label: "Free agents" }]
+          ? [
+              { href: `/leagues/${league.id}/free-agents`, label: "Free agents" },
+              { href: `/leagues/${league.id}/trades`, label: "Trades" },
+            ]
           : []),
         { href: `/players?league=${league.id}`, label: "Players" },
+        { href: `/leagues/${league.id}/chat`, label: "Chat" },
       ]
     : [
         { href: "/leagues", label: "Leagues" },

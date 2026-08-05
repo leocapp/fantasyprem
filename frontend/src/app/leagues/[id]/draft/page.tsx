@@ -12,10 +12,10 @@ type LeagueDetail = {
   name: string;
   status: string;
   roster_size: number;
-  slots_gk: number;
-  slots_def: number;
-  slots_mid: number;
-  slots_fwd: number;
+  min_gk: number;
+  min_def: number;
+  min_mid: number;
+  min_fwd: number;
 };
 
 type TeamRow = { id: string; name: string; owner_id: string; draft_position: number | null };
@@ -71,7 +71,7 @@ export default async function DraftPage({
 
   const { data: league } = await supabase
     .from("leagues")
-    .select("id, name, status, roster_size, slots_gk, slots_def, slots_mid, slots_fwd")
+    .select("id, name, status, roster_size, min_gk, min_def, min_mid, min_fwd")
     .eq("id", id)
     .maybeSingle<LeagueDetail>();
 
@@ -144,22 +144,33 @@ export default async function DraftPage({
 
   const myRoster = madePicks.filter((pick) => pick.fantasy_team_id === myTeam?.id);
 
-  // Squad slots. The database enforces these too — this only saves a round trip.
-  const slotLimits: Record<string, number> = {
-    GK: league.slots_gk,
-    DEF: league.slots_def,
-    MID: league.slots_mid,
-    FWD: league.slots_fwd,
+  // Squad minimums. The database enforces all of this too — mirroring it here
+  // only saves a round trip and lets the button explain itself.
+  const minimums: Record<string, number> = {
+    GK: league.min_gk,
+    DEF: league.min_def,
+    MID: league.min_mid,
+    FWD: league.min_fwd,
   };
 
-  const slotsUsed: Record<string, number> = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+  const held: Record<string, number> = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
   for (const pick of myRoster) {
     const position = pick.players?.position;
-    if (position && position in slotsUsed) slotsUsed[position] += 1;
+    if (position && position in held) held[position] += 1;
   }
 
-  const positionFull = (position: string) =>
-    (slotsUsed[position] ?? 0) >= (slotLimits[position] ?? Infinity);
+  // A pick is legal only if the picks left afterwards can still cover every
+  // unmet minimum.
+  const positionBlocked = (position: string) => {
+    const after = { ...held, [position]: (held[position] ?? 0) + 1 };
+    const total = Object.values(after).reduce((sum, value) => sum + value, 0);
+    const remaining = league.roster_size - total;
+    const shortfall = POSITIONS.reduce(
+      (sum, key) => sum + Math.max(0, minimums[key] - after[key]),
+      0,
+    );
+    return shortfall > remaining;
+  };
 
   const queryFor = (targetPage: number) => {
     const next = new URLSearchParams();
@@ -261,8 +272,13 @@ export default async function DraftPage({
             </span>
             <span className="numeric flex gap-3 text-xs">
               {POSITIONS.map((value) => (
-                <span key={value} className={positionFull(value) ? "dim line-through" : "muted"}>
-                  {value} {slotsUsed[value]}/{slotLimits[value]}
+                <span
+                  key={value}
+                  className={positionBlocked(value) ? "dim line-through" : "muted"}
+                  title={`Minimum ${minimums[value]}`}
+                >
+                  {value} {held[value]}
+                  <span className="dim">/{minimums[value]}</span>
                 </span>
               ))}
             </span>
@@ -280,10 +296,10 @@ export default async function DraftPage({
                   <input type="hidden" name="player_id" value={player.id} />
                   <input type="hidden" name="return_query" value={returnQuery} />
                   <button
-                    disabled={!myTurn || positionFull(player.position)}
+                    disabled={!myTurn || positionBlocked(player.position)}
                     title={
-                      positionFull(player.position)
-                        ? `Your ${player.position} slots are full`
+                      positionBlocked(player.position)
+                        ? `Another ${player.position} would leave too few picks to meet your minimums`
                         : undefined
                     }
                     className="btn btn-primary btn-sm"

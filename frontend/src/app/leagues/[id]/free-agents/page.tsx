@@ -33,6 +33,7 @@ type SearchParams = Promise<{
 
 const PAGE_SIZE = 25;
 const POSITIONS = ["GK", "DEF", "MID", "FWD"] as const;
+const POSITION_ORDER: Record<string, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
 
 export const dynamic = "force-dynamic";
 
@@ -130,15 +131,23 @@ export default async function FreeAgentsPage({
 
   const returnQuery = queryFor(page);
 
-  const myPlayersByPosition = (target: string) =>
-    (roster ?? []).filter((row) => row.players?.position === target);
+  // Any player can be dropped now — the database checks whether the resulting
+  // squad still meets its minimums.
+  const myPlayers = (roster ?? [])
+    .slice()
+    .sort(
+      (a, b) =>
+        (POSITION_ORDER[a.players?.position ?? ""] ?? 9) -
+          (POSITION_ORDER[b.players?.position ?? ""] ?? 9) ||
+        (a.players?.display_name ?? "").localeCompare(b.players?.display_name ?? ""),
+    );
 
   return (
     <main className="page">
       <div>
         <h1 className="page-title">Free agents</h1>
         <p className="page-subtitle">
-          Swaps are like for like — drop a midfielder to add a midfielder.
+          Drop anyone for anyone, as long as your squad still meets its position minimums.
         </p>
       </div>
 
@@ -188,8 +197,6 @@ export default async function FreeAgentsPage({
 
       <ul className="list">
         {players?.map((player) => {
-          const candidates = myPlayersByPosition(player.position);
-
           return (
             <li key={player.id} className="row">
               <PlayerAvatar src={player.photo_url} name={player.display_name} />
@@ -208,14 +215,14 @@ export default async function FreeAgentsPage({
                   className="select select-sm max-w-[9rem]"
                 >
                   <option value="">Drop…</option>
-                  {candidates.map((row) => (
+                  {myPlayers.map((row) => (
                     <option key={row.player_id} value={row.player_id}>
-                      {row.players?.display_name}
+                      {row.players?.position} {row.players?.display_name}
                     </option>
                   ))}
                 </select>
                 <button
-                  disabled={league.status !== "active" || candidates.length === 0}
+                  disabled={league.status !== "active" || myPlayers.length === 0}
                   className="btn btn-primary btn-sm"
                 >
                   Swap

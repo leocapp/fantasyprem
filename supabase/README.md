@@ -21,6 +21,9 @@ Easiest route (no tooling to install): Supabase Dashboard → **SQL Editor** →
 0010_scoring.sql            generate_schedule / score_gameweek / score_all
 0011_fix_captain_lookup.sql corrected captain aggregate in team_gameweek_points
 0012_free_agents.sql        swap_player
+0013_trades.sql             trades, veto window, lazy execution
+0014_squad_minimums.sql     position minimums replace exact quotas
+0015_league_chat.sql        league_messages and realtime
 ```
 
 If a file errors partway, fix the cause and re-run **only** that file — but note the statements before the error already committed, so you may need to drop what it created first. Starting over is always safe: Dashboard → Settings → General → **Reset database**.
@@ -60,6 +63,16 @@ This is the general pattern for the rest of the app. Anything that has to reach 
 Legal formations live in the `formations` table rather than in code, so adding one is an insert, not a deploy.
 
 **Transfers are like-for-like, and that's what keeps squads legal.** `swap_player()` drops and adds in one transaction and requires both players to share a position. Because squads start at exactly 2/5/5/5 and swaps preserve those counts, a legal XI is always fieldable — no separate validation needed. A swap also deletes any *unlocked* lineup naming the dropped player, so managers re-pick deliberately rather than unknowingly fielding ten.
+
+**Accepted trades settle lazily, because there is no scheduler.** `execute_due_trades()` runs when someone loads the trades page and executes any accepted trade whose 24-hour veto window has closed. A trade can therefore settle *late* — nobody visits, nothing happens — but never early, and never without the window elapsing. When the stack grows a cron job, point it at the same function; nothing else changes.
+
+**Squad composition is minimums, not quotas** (migration 0014). A 17-man squad needs at least 2 GK, 3 DEF, 3 MID and 3 FWD; the remaining six places are free. That changes what has to be checked:
+
+- **Drafting** needs lookahead. `make_pick` counts the squad *after* the pick and refuses if the remaining picks can no longer cover every unmet minimum — you can take a sixth midfielder early, but not one that strands you without a second keeper.
+- **Swaps and trades** just have to leave both squads above the floor, which `squad_minimum_violation()` answers in one place for both.
+- **Trades** must be N-for-N so squads stay at `roster_size`, but positions no longer have to match.
+
+`execute_trade` re-checks minimums when the veto window closes, because rosters can change during those 24 hours. A trade that was legal on Monday can be illegal on Tuesday; it auto-cancels with the reason recorded on the trade.
 
 **Standings are a view, not a table.** `league_standings` derives W/L/D and points from final matchups, so there's nothing to keep in sync.
 
