@@ -154,6 +154,17 @@ python -m app.ingest.fpl
 
 Safe to re-run — every write is an upsert keyed on the provider's id, so repeat runs refresh injuries, scores and fixture status instead of duplicating rows. Run it again whenever you want fresh data.
 
+Match stats and scoring are a second job:
+
+```bash
+python -m app.ingest.stats        # every gameweek with played fixtures
+python -m app.ingest.stats 1 2    # only these gameweek numbers
+```
+
+It pulls per-player stats and then recomputes points and matchup results for every league.
+
+Off-season there is nothing to score. For testing, `python -m app.ingest.synthetic` fabricates plausible stats for one gameweek and scores it. It refuses to run unless `ENVIRONMENT=development` and you type a confirmation — it writes invented data.
+
 The endpoints are public but unofficial and undocumented; they can change shape without warning, and the terms are murky for anything commercial. Fine for building, worth revisiting before launch.
 
 ## Auth

@@ -12,6 +12,10 @@ type LeagueDetail = {
   name: string;
   status: string;
   roster_size: number;
+  slots_gk: number;
+  slots_def: number;
+  slots_mid: number;
+  slots_fwd: number;
 };
 
 type TeamRow = { id: string; name: string; owner_id: string; draft_position: number | null };
@@ -74,7 +78,7 @@ export default async function DraftPage({
 
   const { data: league } = await supabase
     .from("leagues")
-    .select("id, name, status, roster_size")
+    .select("id, name, status, roster_size, slots_gk, slots_def, slots_mid, slots_fwd")
     .eq("id", id)
     .maybeSingle<LeagueDetail>();
 
@@ -146,6 +150,23 @@ export default async function DraftPage({
   const lastPage = Math.max(1, Math.ceil(totalAvailable / PAGE_SIZE));
 
   const myRoster = madePicks.filter((pick) => pick.fantasy_team_id === myTeam?.id);
+
+  // Squad slots. The database enforces these too — this only saves a round trip.
+  const slotLimits: Record<string, number> = {
+    GK: league.slots_gk,
+    DEF: league.slots_def,
+    MID: league.slots_mid,
+    FWD: league.slots_fwd,
+  };
+
+  const slotsUsed: Record<string, number> = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+  for (const pick of myRoster) {
+    const position = pick.players?.position;
+    if (position && position in slotsUsed) slotsUsed[position] += 1;
+  }
+
+  const positionFull = (position: string) =>
+    (slotsUsed[position] ?? 0) >= (slotLimits[position] ?? Infinity);
 
   const queryFor = (targetPage: number) => {
     const next = new URLSearchParams();
@@ -257,10 +278,22 @@ export default async function DraftPage({
             </button>
           </form>
 
-          <p className="mt-3 text-sm text-slate-500">
-            {totalAvailable} available
-            {lastPage > 1 ? ` · page ${page} of ${lastPage}` : ""}
-          </p>
+          <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <span className="text-slate-500">
+              {totalAvailable} available
+              {lastPage > 1 ? ` · page ${page} of ${lastPage}` : ""}
+            </span>
+            <span className="flex gap-3 text-xs">
+              {POSITIONS.map((value) => (
+                <span
+                  key={value}
+                  className={positionFull(value) ? "text-slate-600 line-through" : "text-slate-400"}
+                >
+                  {value} {slotsUsed[value]}/{slotLimits[value]}
+                </span>
+              ))}
+            </span>
+          </div>
 
           <ul className="mt-2 divide-y divide-slate-800 rounded-lg border border-slate-800">
             {players?.map((player) => (
@@ -280,7 +313,12 @@ export default async function DraftPage({
                   <input type="hidden" name="player_id" value={player.id} />
                   <input type="hidden" name="return_query" value={returnQuery} />
                   <button
-                    disabled={!myTurn}
+                    disabled={!myTurn || positionFull(player.position)}
+                    title={
+                      positionFull(player.position)
+                        ? `Your ${player.position} slots are full`
+                        : undefined
+                    }
                     className="rounded-md bg-emerald-600 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-600"
                   >
                     Draft

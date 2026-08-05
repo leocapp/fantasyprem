@@ -24,6 +24,26 @@ type TeamRow = {
   profiles: { display_name: string | null; username: string | null } | null;
 };
 
+type StandingRow = {
+  team_id: string;
+  games_played: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  points_for: number;
+  points_against: number;
+};
+
+type MatchupRow = {
+  id: string;
+  home_team_id: string;
+  away_team_id: string | null;
+  home_points: number;
+  away_points: number;
+  status: string;
+  gameweeks: { number: number } | null;
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function LeaguePage({
@@ -60,6 +80,43 @@ export default async function LeaguePage({
     .order("created_at")
     .returns<TeamRow[]>();
 
+  const { data: standings } =
+    league.status === "setup"
+      ? { data: null }
+      : await supabase
+          .from("league_standings")
+          .select("team_id, games_played, wins, losses, draws, points_for, points_against")
+          .eq("league_id", id)
+          .returns<StandingRow[]>();
+
+  const teamName = new Map((teams ?? []).map((team) => [team.id, team.name]));
+
+  const table = (standings ?? []).slice().sort(
+    (a, b) =>
+      b.wins - a.wins || b.points_for - a.points_for || a.losses - b.losses,
+  );
+
+  const { data: allMatchups } =
+    league.status === "setup"
+      ? { data: null }
+      : await supabase
+          .from("matchups")
+          .select(
+            "id, home_team_id, away_team_id, home_points, away_points, status, gameweeks (number)",
+          )
+          .eq("league_id", id)
+          .returns<MatchupRow[]>();
+
+  const myTeamId = teams?.find((team) => team.owner_id === user.id)?.id;
+
+  // Show a window around the action: the last two played plus the next three.
+  const ordered = (allMatchups ?? [])
+    .slice()
+    .sort((a, b) => (a.gameweeks?.number ?? 0) - (b.gameweeks?.number ?? 0));
+  const firstUpcoming = ordered.findIndex((matchup) => matchup.status === "scheduled");
+  const windowStart = Math.max(0, (firstUpcoming === -1 ? ordered.length : firstUpcoming) - 2);
+  const fixtures = ordered.slice(windowStart, windowStart + 5);
+
   const isCommissioner = league.commissioner_id === user.id;
   const slotsLeft = league.max_teams - (teams?.length ?? 0);
   const inSetup = league.status === "setup";
@@ -89,12 +146,20 @@ export default async function LeaguePage({
       ) : null}
 
       {league.status !== "setup" ? (
-        <Link
-          href={`/leagues/${league.id}/draft`}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-center font-medium text-white hover:bg-emerald-500"
-        >
-          {league.status === "drafting" ? "Enter draft room" : "View draft results"}
-        </Link>
+        <div className="flex gap-3">
+          <Link
+            href={`/leagues/${league.id}/draft`}
+            className="flex-1 rounded-md bg-emerald-600 px-4 py-2 text-center font-medium text-white hover:bg-emerald-500"
+          >
+            {league.status === "drafting" ? "Enter draft room" : "View draft results"}
+          </Link>
+          <Link
+            href={`/leagues/${league.id}/team`}
+            className="flex-1 rounded-md border border-slate-600 px-4 py-2 text-center font-medium text-slate-200 hover:border-slate-400"
+          >
+            Set lineup
+          </Link>
+        </div>
       ) : null}
 
       {inSetup ? (
@@ -106,6 +171,83 @@ export default async function LeaguePage({
               ? `Share this with friends — ${slotsLeft} ${slotsLeft === 1 ? "slot" : "slots"} left.`
               : "This league is full."}
           </p>
+        </section>
+      ) : null}
+
+      {fixtures.length > 0 ? (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Fixtures</h2>
+          <ul className="mt-3 flex flex-col gap-1">
+            {fixtures.map((matchup) => {
+              const mine =
+                matchup.home_team_id === myTeamId || matchup.away_team_id === myTeamId;
+              const played = matchup.status !== "scheduled";
+
+              return (
+                <li key={matchup.id}>
+                  <Link
+                    href={`/leagues/${league.id}/matchups/${matchup.id}`}
+                    className={`flex items-center gap-3 rounded-lg border px-4 py-2.5 text-sm hover:border-slate-500 ${
+                      mine ? "border-slate-600 bg-slate-900/60" : "border-slate-800 bg-slate-900/20"
+                    }`}
+                  >
+                    <span className="w-12 font-mono text-xs text-slate-600">
+                      GW{matchup.gameweeks?.number}
+                    </span>
+                    <span className="flex-1 text-right">
+                      {teamName.get(matchup.home_team_id) ?? "—"}
+                    </span>
+                    <span className="font-mono text-xs text-slate-400">
+                      {played
+                        ? `${matchup.home_points} – ${matchup.away_points}`
+                        : matchup.away_team_id
+                          ? "v"
+                          : "bye"}
+                    </span>
+                    <span className="flex-1">
+                      {matchup.away_team_id ? (teamName.get(matchup.away_team_id) ?? "—") : ""}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
+      {table.length > 0 ? (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+            Standings
+          </h2>
+          <table className="mt-3 w-full text-sm">
+            <thead className="text-xs uppercase text-slate-500">
+              <tr className="border-b border-slate-800">
+                <th className="py-2 text-left font-medium">Team</th>
+                <th className="px-2 py-2 text-right font-medium">P</th>
+                <th className="px-2 py-2 text-right font-medium">W</th>
+                <th className="px-2 py-2 text-right font-medium">D</th>
+                <th className="px-2 py-2 text-right font-medium">L</th>
+                <th className="px-2 py-2 text-right font-medium">PF</th>
+                <th className="px-2 py-2 text-right font-medium">PA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {table.map((row) => (
+                <tr key={row.team_id} className="border-b border-slate-900">
+                  <td className="py-2 font-medium">{teamName.get(row.team_id) ?? "—"}</td>
+                  <td className="px-2 py-2 text-right text-slate-400">{row.games_played}</td>
+                  <td className="px-2 py-2 text-right">{row.wins}</td>
+                  <td className="px-2 py-2 text-right text-slate-400">{row.draws}</td>
+                  <td className="px-2 py-2 text-right text-slate-400">{row.losses}</td>
+                  <td className="px-2 py-2 text-right font-mono text-xs">{row.points_for}</td>
+                  <td className="px-2 py-2 text-right font-mono text-xs text-slate-500">
+                    {row.points_against}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       ) : null}
 

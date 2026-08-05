@@ -15,6 +15,8 @@ Easiest route (no tooling to install): Supabase Dashboard → **SQL Editor** →
 0004_rls.sql                Row Level Security policies
 0005_league_functions.sql   create_league / join_league, seed current season
 0006_draft.sql              set_draft_order / start_draft / make_pick, realtime
+0007_player_photos.sql      players.photo_url
+0008_lineups.sql            formations table and save_lineup
 ```
 
 If a file errors partway, fix the cause and re-run **only** that file — but note the statements before the error already committed, so you may need to drop what it created first. Starting over is always safe: Dashboard → Settings → General → **Reset database**.
@@ -48,6 +50,10 @@ Two managers racing to add the same free agent cannot both win, regardless of wh
 This is the general pattern for the rest of the app. Anything that has to reach across an RLS boundary belongs in a `SECURITY DEFINER` function that does its own authorisation, not in a loosened policy.
 
 **Two managers cannot draft the same player, even on the exact same millisecond.** `make_pick()` selects the next unfilled pick `FOR UPDATE`, which locks that row. A simultaneous caller blocks until the first transaction commits, then re-reads and finds the pick already taken — so it fails the turn check rather than double-drafting. The partial unique index on `roster_entries` is the backstop if that logic is ever wrong.
+
+**Lineups are saved whole, never incrementally.** Ten players is never a legal XI, so there is no meaningful way to validate a partial save. `save_lineup()` takes the entire starting eleven and rebuilds `lineup_players` from scratch — simpler than diffing, and it cannot leave a half-valid lineup behind. It also re-checks the gameweek deadline itself, so a browser tab left open past the deadline gets rejected.
+
+Legal formations live in the `formations` table rather than in code, so adding one is an insert, not a deploy.
 
 **Standings are a view, not a table.** `league_standings` derives W/L/D and points from final matchups, so there's nothing to keep in sync.
 

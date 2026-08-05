@@ -45,6 +45,26 @@ class SupabaseRest:
         response.raise_for_status()
         return response.json()
 
+    def update(self, table: str, values: dict[str, Any], **filters: str) -> None:
+        """Patch existing rows. Use this rather than upsert for partial changes:
+        an upsert is an INSERT under the hood and must satisfy every NOT NULL
+        column, even when the row already exists."""
+        response = self._client.patch(
+            f"/{table}",
+            params=filters,
+            json=values,
+            headers={"Prefer": "return=minimal"},
+        )
+        if response.is_error:
+            raise RuntimeError(f"{table} update failed ({response.status_code}): {response.text}")
+
+    def rpc(self, function: str, args: dict[str, Any]) -> Any:
+        """Call a Postgres function through PostgREST."""
+        response = self._client.post(f"/rpc/{function}", json=args)
+        if response.is_error:
+            raise RuntimeError(f"{function} failed ({response.status_code}): {response.text}")
+        return response.json()
+
     def upsert(self, table: str, rows: Sequence[dict[str, Any]], on_conflict: str) -> int:
         """Insert rows, updating any that collide on `on_conflict`."""
         if not rows:
