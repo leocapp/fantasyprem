@@ -189,8 +189,8 @@ If you keep confirmations on, set the redirect target: **Authentication → URL 
 
 ## Next steps
 
-- League creation and joining by code
-- Pick a data source for fixtures and player stats, and add an ingestion job
-- Draft room (snake order, turn enforcement)
-- Lineup editor with formation validation
-- Scoring engine and weekly matchup settlement
+- Auto-substitutions when a starter doesn't play
+- Waiver priority instead of first-come free agency
+- Trades between managers
+- Run ingestion and scoring on a schedule rather than by hand
+- Deploy: frontend to Vercel, backend to Railway or Fly

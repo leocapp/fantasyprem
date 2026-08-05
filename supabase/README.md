@@ -17,6 +17,10 @@ Easiest route (no tooling to install): Supabase Dashboard → **SQL Editor** →
 0006_draft.sql              set_draft_order / start_draft / make_pick, realtime
 0007_player_photos.sql      players.photo_url
 0008_lineups.sql            formations table and save_lineup
+0009_position_quotas.sql    squad slots per position, quota check in make_pick
+0010_scoring.sql            generate_schedule / score_gameweek / score_all
+0011_fix_captain_lookup.sql corrected captain aggregate in team_gameweek_points
+0012_free_agents.sql        swap_player
 ```
 
 If a file errors partway, fix the cause and re-run **only** that file — but note the statements before the error already committed, so you may need to drop what it created first. Starting over is always safe: Dashboard → Settings → General → **Reset database**.
@@ -54,6 +58,8 @@ This is the general pattern for the rest of the app. Anything that has to reach 
 **Lineups are saved whole, never incrementally.** Ten players is never a legal XI, so there is no meaningful way to validate a partial save. `save_lineup()` takes the entire starting eleven and rebuilds `lineup_players` from scratch — simpler than diffing, and it cannot leave a half-valid lineup behind. It also re-checks the gameweek deadline itself, so a browser tab left open past the deadline gets rejected.
 
 Legal formations live in the `formations` table rather than in code, so adding one is an insert, not a deploy.
+
+**Transfers are like-for-like, and that's what keeps squads legal.** `swap_player()` drops and adds in one transaction and requires both players to share a position. Because squads start at exactly 2/5/5/5 and swaps preserve those counts, a legal XI is always fieldable — no separate validation needed. A swap also deletes any *unlocked* lineup naming the dropped player, so managers re-pick deliberately rather than unknowingly fielding ten.
 
 **Standings are a view, not a table.** `league_standings` derives W/L/D and points from final matchups, so there's nothing to keep in sync.
 
