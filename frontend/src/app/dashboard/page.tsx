@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { signOut } from "@/app/auth/actions";
@@ -69,9 +70,12 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      <p className="text-sm text-slate-500">
-        No leagues yet — that&apos;s the next thing to build.
-      </p>
+      <Link
+        href="/leagues"
+        className="rounded-md bg-emerald-600 px-4 py-2 text-center font-medium text-white hover:bg-emerald-500"
+      >
+        Your leagues
+      </Link>
     </main>
   );
 }
