@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { apiFetch } from "@/lib/api";
+import { requireProfile } from "@/lib/requireProfile";
 import { createClient } from "@/lib/supabase/server";
-
-type MeResponse = { id: string; email: string | null; role: string | null };
 
 type MembershipRow = {
   id: string;
@@ -15,6 +13,9 @@ type MembershipRow = {
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  // Redirects to /account until a username exists.
+  const { profile } = await requireProfile();
+
   const supabase = await createClient();
 
   // getUser() revalidates the token with Supabase; getSession() alone is not
@@ -25,31 +26,19 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
   const { data: memberships } = await supabase
     .from("fantasy_teams")
     .select("id, name, leagues (id, name, status)")
     .eq("owner_id", user.id)
     .returns<MembershipRow[]>();
 
-  let backend: { ok: true; data: MeResponse } | { ok: false; error: string };
-  try {
-    backend = {
-      ok: true,
-      data: await apiFetch<MeResponse>("/api/me", { accessToken: session?.access_token }),
-    };
-  } catch (error) {
-    backend = { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
-  }
-
   return (
     <main className="page page-narrow">
       <div>
         <h1 className="page-title">Dashboard</h1>
-        <p className="page-subtitle">Signed in as {user.email}</p>
+        <p className="page-subtitle">
+          @{profile.username} · {user.email}
+        </p>
       </div>
 
       <section>
@@ -88,20 +77,6 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <section className="card">
-        <h2 className="section-label">Backend token verification</h2>
-        {backend.ok ? (
-          <div className="mt-3 space-y-1">
-            <p style={{ color: "var(--accent-hover)" }}>FastAPI verified your Supabase JWT.</p>
-            <p className="numeric text-xs dim">user id: {backend.data.id}</p>
-          </div>
-        ) : (
-          <div className="mt-3 space-y-1">
-            <p style={{ color: "var(--warning)" }}>Backend rejected or could not be reached.</p>
-            <p className="numeric text-xs dim">{backend.error}</p>
-          </div>
-        )}
-      </section>
     </main>
   );
 }

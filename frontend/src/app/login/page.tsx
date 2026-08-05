@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 
-import { login, signup } from "./actions";
+import { login, signInWithGoogle, signup } from "./actions";
 
 type SearchParams = Promise<{ error?: string; message?: string }>;
 
@@ -39,6 +39,16 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
       {error ? <p className="notice notice-error">{error}</p> : null}
       {message ? <p className="notice notice-success">{message}</p> : null}
+
+      <form action={signInWithGoogle}>
+        <button className="btn btn-ghost w-full">Continue with Google</button>
+      </form>
+
+      <div className="flex items-center gap-3 text-xs dim">
+        <span className="h-px flex-1 bg-[var(--border)]" />
+        or use email
+        <span className="h-px flex-1 bg-[var(--border)]" />
+      </div>
 
       {/* suppressHydrationWarning: password managers and browser autofill add
           their own attributes to these fields before React hydrates. */}

@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import ManagerAvatar from "@/components/ManagerAvatar";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { createClient } from "@/lib/supabase/server";
 
-import DraftRealtime from "./DraftRealtime";
+import RealtimeRefresh from "@/components/RealtimeRefresh";
+
 import { makePick } from "./actions";
 
 type LeagueDetail = {
@@ -18,7 +20,13 @@ type LeagueDetail = {
   min_fwd: number;
 };
 
-type TeamRow = { id: string; name: string; owner_id: string; draft_position: number | null };
+type TeamRow = {
+  id: string;
+  name: string;
+  owner_id: string;
+  draft_position: number | null;
+  profiles: { username: string | null; avatar_url: string | null } | null;
+};
 
 type PickRow = {
   id: string;
@@ -80,7 +88,7 @@ export default async function DraftPage({
 
   const { data: teams } = await supabase
     .from("fantasy_teams")
-    .select("id, name, owner_id, draft_position")
+    .select("id, name, owner_id, draft_position, profiles (username, avatar_url)")
     .eq("league_id", id)
     .order("draft_position")
     .returns<TeamRow[]>();
@@ -191,7 +199,17 @@ export default async function DraftPage({
 
   return (
     <main className="page">
-      <DraftRealtime leagueId={league.id} />
+      {/* The draft is the one page where being seconds stale is costly, so it
+          polls harder than the rest and says so when the socket drops. */}
+      <RealtimeRefresh
+        channel={`draft:${league.id}`}
+        sources={[
+          { table: "draft_picks", filter: `league_id=eq.${league.id}`, event: "UPDATE" },
+          { table: "roster_entries", filter: `league_id=eq.${league.id}`, event: "INSERT" },
+        ]}
+        pollMs={isComplete ? 0 : 4000}
+        showWhenDegraded={!isComplete}
+      />
 
       <div className="flex items-baseline justify-between gap-4">
         <h1 className="page-title">Draft room</h1>
@@ -210,10 +228,22 @@ export default async function DraftPage({
         ) : (
           <>
             <h2 className="section-label">On the clock</h2>
-            <p className="mt-1 text-xl font-semibold">
-              {onTheClock?.name}
-              {myTurn ? " — that's you" : ""}
-            </p>
+            <div className="mt-2 flex items-center gap-3">
+              <ManagerAvatar
+                src={onTheClock?.profiles?.avatar_url}
+                username={onTheClock?.profiles?.username}
+                size="md"
+              />
+              <div>
+                <p className="text-xl font-semibold">
+                  {onTheClock?.name}
+                  {myTurn ? " — that's you" : ""}
+                </p>
+                {onTheClock?.profiles?.username ? (
+                  <p className="text-sm dim">@{onTheClock.profiles.username}</p>
+                ) : null}
+              </div>
+            </div>
             <p className="mt-1 text-sm dim">
               Round {nextPick?.round} · pick {nextPick?.overall_pick}
             </p>
@@ -366,7 +396,11 @@ export default async function DraftPage({
                 <li key={pick.id} className="flex gap-2">
                   <span className="numeric w-8 text-xs dim">{pick.overall_pick}</span>
                   <span className="flex-1 truncate">{pick.players?.display_name}</span>
-                  <span className="truncate dim">{teamsById.get(pick.fantasy_team_id)?.name}</span>
+                  <span className="truncate dim">
+                    {teamsById.get(pick.fantasy_team_id)?.profiles?.username
+                      ? `@${teamsById.get(pick.fantasy_team_id)?.profiles?.username}`
+                      : teamsById.get(pick.fantasy_team_id)?.name}
+                  </span>
                 </li>
               ))}
             {madePicks.length === 0 ? <li className="dim">Nobody has picked.</li> : null}

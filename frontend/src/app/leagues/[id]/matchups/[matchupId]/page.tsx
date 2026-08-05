@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import ManagerAvatar from "@/components/ManagerAvatar";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,7 +17,11 @@ type MatchupRow = {
   gameweeks: { number: number } | null;
 };
 
-type TeamRow = { id: string; name: string };
+type TeamRow = {
+  id: string;
+  name: string;
+  profiles: { username: string | null; avatar_url: string | null } | null;
+};
 
 type LineupPlayer = {
   player_id: string;
@@ -35,6 +40,7 @@ type LineupRow = {
   id: string;
   fantasy_team_id: string;
   formation: string;
+  carried_forward: boolean;
   lineup_players: LineupPlayer[];
 };
 
@@ -105,14 +111,14 @@ export default async function MatchupPage({
 
   const { data: teams } = await supabase
     .from("fantasy_teams")
-    .select("id, name")
+    .select("id, name, profiles (username, avatar_url)")
     .in("id", teamIds)
     .returns<TeamRow[]>();
 
   const { data: lineups } = await supabase
     .from("lineups")
     .select(
-      "id, fantasy_team_id, formation, lineup_players (player_id, role, is_captain, is_vice_captain, players (display_name, position, photo_url, clubs (short_name)))",
+      "id, fantasy_team_id, formation, carried_forward, lineup_players (player_id, role, is_captain, is_vice_captain, players (display_name, position, photo_url, clubs (short_name)))",
     )
     .eq("gameweek_id", matchup.gameweek_id)
     .in("fantasy_team_id", teamIds)
@@ -147,6 +153,12 @@ export default async function MatchupPage({
   const pointsBy = new Map((scores ?? []).map((row) => [row.player_id, row.points]));
   const statsBy = new Map((stats ?? []).map((row) => [row.player_id, row]));
   const nameBy = new Map((teams ?? []).map((team) => [team.id, team.name]));
+  const managerBy = new Map(
+    (teams ?? []).map((team) => [team.id, team.profiles?.username ?? null]),
+  );
+  const avatarBy = new Map(
+    (teams ?? []).map((team) => [team.id, team.profiles?.avatar_url ?? null]),
+  );
   const lineupBy = new Map((lineups ?? []).map((lineup) => [lineup.fantasy_team_id, lineup]));
 
   const played = matchup.status !== "scheduled";
@@ -161,8 +173,16 @@ export default async function MatchupPage({
     }
 
     const lineup = lineupBy.get(teamId);
-    const starters = (lineup?.lineup_players ?? [])
-      .filter((row) => row.role === "starter")
+    const allStarters = (lineup?.lineup_players ?? []).filter((row) => row.role === "starter");
+
+    // The armband passes to the vice if the captain didn't play, so work out
+    // who actually doubled rather than assuming it was the captain.
+    const captainId = allStarters.find((row) => row.is_captain)?.player_id;
+    const viceId = allStarters.find((row) => row.is_vice_captain)?.player_id;
+    const captainPlayed = (statsBy.get(captainId ?? "")?.minutes ?? 0) > 0;
+    const doubledId = captainPlayed ? captainId : viceId;
+
+    const starters = allStarters
       .sort(
         (a, b) =>
           (POSITION_ORDER[a.players?.position ?? ""] ?? 9) -
@@ -172,11 +192,24 @@ export default async function MatchupPage({
 
     return (
       <section className="flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <h2 className="truncate font-semibold">{nameBy.get(teamId) ?? "—"}</h2>
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-2">
+            <ManagerAvatar
+              src={avatarBy.get(teamId)}
+              username={managerBy.get(teamId)}
+              size="md"
+            />
+            <span className="min-w-0">
+              <h2 className="truncate font-semibold">{nameBy.get(teamId) ?? "—"}</h2>
+              <span className="block text-xs dim">
+                {managerBy.get(teamId) ? `@${managerBy.get(teamId)} · ` : ""}
+                {lineup?.formation ?? "no lineup set"}
+                {lineup?.carried_forward ? " · carried over" : ""}
+              </span>
+            </span>
+          </span>
           <span className="numeric text-lg">{played ? points : "–"}</span>
         </div>
-        <p className="text-xs dim">{lineup?.formation ?? "no lineup set"}</p>
 
         <ul className="list mt-3">
           {starters.map((row) => (
@@ -201,6 +234,11 @@ export default async function MatchupPage({
                       V
                     </span>
                   ) : null}
+                  {played && row.player_id === doubledId ? (
+                    <span className="rounded bg-amber-500/20 px-1 text-[10px] font-bold text-amber-300">
+                      ×2
+                    </span>
+                  ) : null}
                 </span>
                 <span className="block truncate text-xs dim">
                   {row.players?.position} · {row.players?.clubs?.short_name ?? "—"} ·{" "}
@@ -208,7 +246,9 @@ export default async function MatchupPage({
                 </span>
               </Link>
               <span className="numeric text-sm">
-                {played ? (pointsBy.get(row.player_id) ?? 0) : "–"}
+                {played
+                  ? (pointsBy.get(row.player_id) ?? 0) * (row.player_id === doubledId ? 2 : 1)
+                  : "–"}
               </span>
             </li>
           ))}
@@ -240,8 +280,8 @@ export default async function MatchupPage({
       </div>
 
       <p className="text-xs dim">
-        Captain&apos;s points are doubled in the team total, so the column above will not sum to the
-        score.
+        The ×2 player is the captain — or the vice-captain, if the captain didn&apos;t play. Their
+        score is shown already doubled, so each column adds up to the team total.
       </p>
     </main>
   );

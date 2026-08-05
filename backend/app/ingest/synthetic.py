@@ -87,7 +87,6 @@ def main(argv: list[str]) -> int:
         return 1
 
     wanted = int(argv[0]) if argv else None
-    rng = random.Random(42)
 
     with SupabaseRest(settings.supabase_url, settings.supabase_service_role_key) as db:
         seasons = db.select("seasons", select="id", is_current="is.true")
@@ -113,6 +112,11 @@ def main(argv: list[str]) -> int:
         if target is None:
             print("No gameweek has fixtures. Run: python -m app.ingest.fpl", file=sys.stderr)
             return 1
+
+        # Seeded per gameweek: repeatable if you re-run the same week, but
+        # genuinely different between weeks. A fixed seed made every gameweek
+        # identical, which looks exactly like scoring being stuck.
+        rng = random.Random(f"gameweek-{target['number']}")
 
         fixtures = fixtures_by_gameweek[target["id"]]
         fixture_by_club: dict[str, str] = {}

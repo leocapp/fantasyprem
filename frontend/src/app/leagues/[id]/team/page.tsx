@@ -5,7 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 
 import { saveLineup } from "./actions";
 
-type LeagueRow = { id: string; name: string; status: string };
+type LeagueRow = {
+  id: string;
+  name: string;
+  status: string;
+  carry_forward_lineups: boolean;
+};
 type TeamRow = { id: string; name: string; owner_id: string };
 type GameweekRow = { id: string; number: number; deadline_at: string };
 type FormationRow = {
@@ -66,7 +71,7 @@ export default async function TeamPage({
 
   const { data: league } = await supabase
     .from("leagues")
-    .select("id, name, status")
+    .select("id, name, status, carry_forward_lineups")
     .eq("id", id)
     .maybeSingle<LeagueRow>();
 
@@ -149,6 +154,14 @@ export default async function TeamPage({
 
       {error ? <p className="notice notice-error">{error}</p> : null}
       {message ? <p className="notice notice-success">{message}</p> : null}
+
+      {gameweek && !lineup ? (
+        <p className="text-sm muted">
+          {league.carry_forward_lineups
+            ? "No lineup set for this gameweek yet — last week's will be used if you don't change it."
+            : "No lineup set for this gameweek. Without one you'll score nothing."}
+        </p>
+      ) : null}
 
       {players.length === 0 ? (
         <p className="muted">Your roster is empty — it fills up when the draft runs.</p>

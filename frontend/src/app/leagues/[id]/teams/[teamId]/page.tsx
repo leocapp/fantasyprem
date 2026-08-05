@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import ManagerAvatar from "@/components/ManagerAvatar";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { createClient } from "@/lib/supabase/server";
 
@@ -11,7 +12,12 @@ type TeamRow = {
   name: string;
   owner_id: string;
   draft_position: number | null;
-  profiles: { display_name: string | null; username: string | null } | null;
+  profiles: {
+    display_name: string | null;
+    username: string | null;
+    avatar_url: string | null;
+    bio: string | null;
+  } | null;
 };
 
 type StandingRow = {
@@ -73,7 +79,9 @@ export default async function TeamDetailPage({
 
   const { data: teams } = await supabase
     .from("fantasy_teams")
-    .select("id, name, owner_id, draft_position, profiles (display_name, username)")
+    .select(
+      "id, name, owner_id, draft_position, profiles (display_name, username, avatar_url, bio)",
+    )
     .eq("league_id", id)
     .returns<TeamRow[]>();
 
@@ -124,14 +132,28 @@ export default async function TeamDetailPage({
         <Link href={`/leagues/${league.id}`} className="text-sm dim hover:text-[var(--text)]">
           ← {league.name}
         </Link>
-        <h1 className="page-title mt-1">{team.name}</h1>
-        <p className="page-subtitle">
-          {team.profiles?.display_name ?? team.profiles?.username ?? "Manager"}
-          {isMine ? " · you" : ""}
-          {standings
-            ? ` · ${standings.wins}-${standings.draws}-${standings.losses} · ${standings.points_for} points for`
-            : ""}
-        </p>
+        <div className="mt-2 flex items-center gap-3">
+          <ManagerAvatar
+            src={team.profiles?.avatar_url}
+            username={team.profiles?.username}
+            size="lg"
+          />
+          <div className="min-w-0">
+            <h1 className="page-title">{team.name}</h1>
+            <p className="page-subtitle">
+              {team.profiles?.username ? `@${team.profiles.username}` : "Manager"}
+              {team.profiles?.display_name ? ` · ${team.profiles.display_name}` : ""}
+              {isMine ? " · you" : ""}
+              {standings
+                ? ` · ${standings.wins}-${standings.draws}-${standings.losses} · ${standings.points_for} points for`
+                : ""}
+            </p>
+          </div>
+        </div>
+
+        {team.profiles?.bio ? (
+          <p className="mt-3 max-w-prose text-sm muted">{team.profiles.bio}</p>
+        ) : null}
       </div>
 
       <section>

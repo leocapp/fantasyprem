@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import TeamLabel from "@/components/TeamLabel";
 import { createClient } from "@/lib/supabase/server";
 
 import { setDraftOrder, startDraft } from "./actions";
@@ -21,7 +22,11 @@ type TeamRow = {
   owner_id: string;
   draft_position: number | null;
   created_at: string;
-  profiles: { display_name: string | null; username: string | null } | null;
+  profiles: {
+    display_name: string | null;
+    username: string | null;
+    avatar_url: string | null;
+  } | null;
 };
 
 type StandingRow = {
@@ -74,7 +79,9 @@ export default async function LeaguePage({
 
   const { data: teams } = await supabase
     .from("fantasy_teams")
-    .select("id, name, owner_id, draft_position, created_at, profiles (display_name, username)")
+    .select(
+      "id, name, owner_id, draft_position, created_at, profiles (display_name, username, avatar_url)",
+    )
     .eq("league_id", id)
     .order("draft_position", { nullsFirst: false })
     .order("created_at")
@@ -101,6 +108,12 @@ export default async function LeaguePage({
           .returns<MatchupRow[]>();
 
   const teamName = new Map((teams ?? []).map((team) => [team.id, team.name]));
+  const managerOf = new Map(
+    (teams ?? []).map((team) => [team.id, team.profiles?.username ?? null]),
+  );
+  const avatarOf = new Map(
+    (teams ?? []).map((team) => [team.id, team.profiles?.avatar_url ?? null]),
+  );
   const myTeamId = teams?.find((team) => team.owner_id === user.id)?.id;
 
   const table = (standings ?? [])
@@ -122,7 +135,16 @@ export default async function LeaguePage({
     (matchup) => matchup.gameweeks?.number === currentGameweek,
   );
 
-  const isCommissioner = league.commissioner_id === user.id;
+  // Co-commissioners have every commissioner power here, so the check can't
+  // just compare against the league's owner.
+  const { data: grant } = await supabase
+    .from("league_commissioners")
+    .select("profile_id")
+    .eq("league_id", id)
+    .eq("profile_id", user.id)
+    .maybeSingle();
+
+  const isCommissioner = league.commissioner_id === user.id || Boolean(grant);
   const slotsLeft = league.max_teams - (teams?.length ?? 0);
   const inSetup = league.status === "setup";
 
@@ -175,9 +197,13 @@ export default async function LeaguePage({
                         : "border-[var(--border)]"
                     }`}
                   >
-                    <span className="flex-1 truncate text-right">
-                      {teamName.get(matchup.home_team_id) ?? "—"}
-                    </span>
+                    <TeamLabel
+                      name={teamName.get(matchup.home_team_id)}
+                      username={managerOf.get(matchup.home_team_id)}
+                      avatarUrl={avatarOf.get(matchup.home_team_id)}
+                      align="right"
+                      className="flex-1"
+                    />
                     <span className="numeric text-xs muted">
                       {played
                         ? `${matchup.home_points} – ${matchup.away_points}`
@@ -185,8 +211,14 @@ export default async function LeaguePage({
                           ? "v"
                           : "bye"}
                     </span>
-                    <span className="flex-1 truncate">
-                      {matchup.away_team_id ? (teamName.get(matchup.away_team_id) ?? "—") : ""}
+                    <span className="flex-1">
+                      {matchup.away_team_id ? (
+                        <TeamLabel
+                          name={teamName.get(matchup.away_team_id)}
+                          username={managerOf.get(matchup.away_team_id)}
+                          avatarUrl={avatarOf.get(matchup.away_team_id)}
+                        />
+                      ) : null}
                     </span>
                   </Link>
                 </li>
@@ -224,7 +256,11 @@ export default async function LeaguePage({
                       href={`/leagues/${league.id}/teams/${row.team_id}`}
                       className="hover:underline"
                     >
-                      {teamName.get(row.team_id) ?? "—"}
+                      <TeamLabel
+                        name={teamName.get(row.team_id)}
+                        username={managerOf.get(row.team_id)}
+                        avatarUrl={avatarOf.get(row.team_id)}
+                      />
                     </Link>
                   </td>
                   <td className="numeric px-2 py-2 text-right muted">{row.games_played}</td>
@@ -249,9 +285,14 @@ export default async function LeaguePage({
             <li key={team.id}>
               <Link href={`/leagues/${league.id}/teams/${team.id}`} className="row-link">
                 <span className="numeric w-6 text-xs dim">{team.draft_position ?? index + 1}</span>
-                <span className="flex-1 truncate font-medium">{team.name}</span>
+                <TeamLabel
+                  name={team.name}
+                  username={team.profiles?.username}
+                  avatarUrl={team.profiles?.avatar_url}
+                  className="flex-1 font-medium"
+                />
                 <span className="truncate text-sm dim">
-                  {team.profiles?.display_name ?? team.profiles?.username ?? "Manager"}
+                  {team.profiles?.display_name ?? ""}
                   {team.owner_id === league.commissioner_id ? " · commissioner" : ""}
                   {team.owner_id === user.id ? " · you" : ""}
                 </span>

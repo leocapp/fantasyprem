@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { requireProfile } from "@/lib/requireProfile";
 import { createClient } from "@/lib/supabase/server";
 
 import { createLeague, joinLeague } from "./actions";
@@ -24,9 +25,13 @@ export const dynamic = "force-dynamic";
 export default async function LeaguesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; code?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, code } = await searchParams;
+
+  // Leagues are where usernames start mattering, so require one here too.
+  await requireProfile();
+
   const supabase = await createClient();
 
   const {
@@ -106,12 +111,18 @@ export default async function LeaguesPage({
           </form>
         </section>
 
-        <section className="card">
+        <section className={`card ${code ? "card-accent" : ""}`}>
           <h2 className="font-semibold">Join a league</h2>
+          {code ? (
+            <p className="mt-1 text-sm muted">
+              Invite code filled in — just name your team.
+            </p>
+          ) : null}
           <form action={joinLeague} className="mt-4 flex flex-col gap-3" suppressHydrationWarning>
             <input
               name="join_code"
               required
+              defaultValue={code ?? ""}
               placeholder="Join code"
               className="input numeric uppercase"
               suppressHydrationWarning

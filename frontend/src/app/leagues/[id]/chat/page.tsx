@@ -5,7 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import ChatRoom, { type ChatMessage } from "./ChatRoom";
 
 type LeagueRow = { id: string; name: string };
-type TeamRow = { id: string; name: string; owner_id: string };
+type TeamRow = {
+  id: string;
+  name: string;
+  owner_id: string;
+  profiles: { username: string | null; avatar_url: string | null } | null;
+};
 
 const HISTORY_LIMIT = 100;
 
@@ -31,7 +36,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
 
   const { data: teams } = await supabase
     .from("fantasy_teams")
-    .select("id, name, owner_id")
+    .select("id, name, owner_id, profiles (username, avatar_url)")
     .eq("league_id", id)
     .returns<TeamRow[]>();
 
@@ -48,7 +53,16 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
     .limit(HISTORY_LIMIT)
     .returns<ChatMessage[]>();
 
-  const teamNames = Object.fromEntries((teams ?? []).map((team) => [team.id, team.name]));
+  const teamInfo = Object.fromEntries(
+    (teams ?? []).map((team) => [
+      team.id,
+      {
+        name: team.name,
+        username: team.profiles?.username ?? null,
+        avatarUrl: team.profiles?.avatar_url ?? null,
+      },
+    ]),
+  );
 
   return (
     <main className="page page-narrow">
@@ -61,7 +75,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
         leagueId={league.id}
         teamId={myTeam.id}
         userId={user.id}
-        teamNames={teamNames}
+        teams={teamInfo}
         initial={(recent ?? []).slice().reverse()}
       />
     </main>

@@ -6,17 +6,36 @@ import { useState } from "react";
 
 import { signOut } from "@/app/auth/actions";
 
-type League = { id: string; name: string; status: string };
+type League = {
+  id: string;
+  name: string;
+  status: string;
+  /** True for the owner and for co-commissioners. */
+  isCommissioner: boolean;
+};
 
-export default function NavBar({ email, leagues }: { email: string; leagues: League[] }) {
+export default function NavBar({
+  email,
+  leagues,
+  lastLeagueId,
+}: {
+  email: string;
+  leagues: League[];
+  lastLeagueId?: string | null;
+}) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
 
-  // League context comes from the path (/leagues/<id>/...) or, on pages that
-  // live outside a league like /players, from a ?league= parameter.
+  // League context, in order of confidence: the path, an explicit ?league=
+  // parameter, then the last league visited (a cookie set by middleware) so
+  // pages like /account and /players keep their bearings.
+  const remembered = pathname === "/leagues" ? undefined : (lastLeagueId ?? undefined);
   const leagueId =
-    pathname.match(/^\/leagues\/([0-9a-f-]{36})/)?.[1] ?? searchParams.get("league") ?? undefined;
+    pathname.match(/^\/leagues\/([0-9a-f-]{36})/)?.[1] ??
+    searchParams.get("league") ??
+    remembered;
+
   const league = leagues.find((row) => row.id === leagueId);
 
   const links: { href: string; label: string }[] = league
@@ -34,6 +53,9 @@ export default function NavBar({ email, leagues }: { email: string; leagues: Lea
           : []),
         { href: `/players?league=${league.id}`, label: "Players" },
         { href: `/leagues/${league.id}/chat`, label: "Chat" },
+        ...(league.isCommissioner
+          ? [{ href: `/leagues/${league.id}/settings`, label: "Settings" }]
+          : []),
       ]
     : [
         { href: "/leagues", label: "Leagues" },
@@ -45,25 +67,31 @@ export default function NavBar({ email, leagues }: { email: string; leagues: Lea
     return path === pathname || (path !== "/" && pathname.startsWith(`${path}/`));
   };
 
+  // Commissioners get two extra links. Rather than collapsing the bar, tighten
+  // it: smaller text and padding once there are enough links to need it.
+  const dense = links.length > 5;
+  const linkClass = dense ? "px-1.5 py-1 text-[13px]" : "px-2 py-1.5 text-sm";
+
   return (
     <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg)]/95 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-4xl items-center gap-4 px-4 py-3">
+      {/* Wider than the page container: a commissioner sees eight links. */}
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3">
         <Link href="/dashboard" className="font-bold tracking-tight">
           FantasyPrem
         </Link>
 
         {league ? (
-          <span className="hidden truncate text-sm text-[var(--text-dim)] sm:inline">
+          <span className="hidden max-w-[10rem] truncate text-sm text-[var(--text-dim)] xl:inline">
             / {league.name}
           </span>
         ) : null}
 
-        <nav className="ml-auto hidden items-center gap-1 sm:flex">
+        <nav className="ml-auto hidden items-center gap-0.5 sm:flex">
           {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className={`rounded-md px-2.5 py-1.5 text-sm transition-colors ${
+              className={`whitespace-nowrap rounded-md transition-colors ${linkClass} ${
                 isActive(link.href)
                   ? "bg-[var(--surface-raised)] text-[var(--text)]"
                   : "text-[var(--text-muted)] hover:text-[var(--text)]"
@@ -73,9 +101,24 @@ export default function NavBar({ email, leagues }: { email: string; leagues: Lea
             </Link>
           ))}
 
-          <form action={signOut} className="ml-2">
+          <span className="mx-1 h-4 w-px bg-[var(--border)]" />
+
+          <Link
+            href="/account"
+            className={`whitespace-nowrap rounded-md transition-colors ${linkClass} ${
+              isActive("/account")
+                ? "bg-[var(--surface-raised)] text-[var(--text)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text)]"
+            }`}
+          >
+            Account
+          </Link>
+
+          <form action={signOut}>
             <button
-              className="text-sm text-[var(--text-dim)] hover:text-[var(--text)]"
+              className={`whitespace-nowrap px-2 text-[var(--text-dim)] hover:text-[var(--text)] ${
+                dense ? "text-[13px]" : "text-sm"
+              }`}
               title={email}
             >
               Sign out
@@ -125,6 +168,14 @@ export default function NavBar({ email, leagues }: { email: string; leagues: Lea
               ))}
             </div>
           ) : null}
+
+          <Link
+            href="/account"
+            onClick={() => setOpen(false)}
+            className="block rounded-md px-2 py-2 text-sm text-[var(--text-muted)]"
+          >
+            Account
+          </Link>
 
           <form action={signOut} className="mt-2 border-t border-[var(--border)] pt-2">
             <button className="px-2 py-2 text-sm text-[var(--text-dim)]">Sign out ({email})</button>

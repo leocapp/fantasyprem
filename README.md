@@ -41,6 +41,28 @@ FantasyPrem/
 └── README.md
 ```
 
+## Picking it up again
+
+Day to day you only need the frontend. Supabase is hosted, and the app no longer
+calls the local API at runtime.
+
+```bash
+cd ~/FantasyPrem/frontend && npm run dev
+```
+
+Then open http://localhost:3000.
+
+The Python side is only for data jobs — simulating a gameweek, pulling fresh
+squads, scoring:
+
+```bash
+cd ~/FantasyPrem/backend && source .venv/bin/activate
+python -m app.ingest.synthetic 3   # fabricate and score one gameweek
+python -m app.ingest.cron          # refresh data, score, settle trades
+```
+
+`uvicorn` is only needed if you're working on the FastAPI app itself.
+
 ## Prerequisites
 
 - Node.js 20+ and npm

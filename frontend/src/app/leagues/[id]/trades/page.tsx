@@ -1,12 +1,18 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import RealtimeRefresh from "@/components/RealtimeRefresh";
 import { createClient } from "@/lib/supabase/server";
 
 import { cancelTrade, proposeTrade, respondToTrade, vetoTrade } from "./actions";
 
 type LeagueRow = { id: string; name: string; status: string };
-type TeamRow = { id: string; name: string; owner_id: string };
+type TeamRow = {
+  id: string;
+  name: string;
+  owner_id: string;
+  profiles: { username: string | null } | null;
+};
 
 type RosterRow = {
   player_id: string;
@@ -62,7 +68,7 @@ export default async function TradesPage({
 
   const { data: teams } = await supabase
     .from("fantasy_teams")
-    .select("id, name, owner_id")
+    .select("id, name, owner_id, profiles (username)")
     .eq("league_id", id)
     .order("name")
     .returns<TeamRow[]>();
@@ -89,7 +95,13 @@ export default async function TradesPage({
     .order("created_at", { ascending: false })
     .returns<TradeRow[]>();
 
-  const nameBy = new Map((teams ?? []).map((team) => [team.id, team.name]));
+  // Team names change; usernames don't, so trade history stays traceable.
+  const nameBy = new Map(
+    (teams ?? []).map((team) => [
+      team.id,
+      team.profiles?.username ? `${team.name} (@${team.profiles.username})` : team.name,
+    ]),
+  );
   const playerBy = new Map(
     (rosters ?? []).map((row) => [
       row.player_id,
@@ -128,6 +140,15 @@ export default async function TradesPage({
 
   return (
     <main className="page">
+      <RealtimeRefresh
+        channel={`trades:${league.id}`}
+        sources={[
+          { table: "trades", filter: `league_id=eq.${league.id}` },
+          { table: "trade_vetoes" },
+        ]}
+        pollMs={15000}
+      />
+
       <div>
         <h1 className="page-title">Trades</h1>
         <p className="page-subtitle">
@@ -156,7 +177,7 @@ export default async function TradesPage({
                 <option value="">Choose a manager…</option>
                 {others.map((team) => (
                   <option key={team.id} value={team.id}>
-                    {team.name}
+                    {team.profiles?.username ? `${team.name} (@${team.profiles.username})` : team.name}
                   </option>
                 ))}
               </select>
