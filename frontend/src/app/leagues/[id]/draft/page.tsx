@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import PlayerAvatar from "@/components/PlayerAvatar";
 import { createClient } from "@/lib/supabase/server";
 
 import DraftRealtime from "./DraftRealtime";
@@ -28,11 +29,21 @@ type PlayerRow = {
   id: string;
   display_name: string;
   position: string;
+  photo_url: string | null;
   clubs: { short_name: string } | null;
 };
 
-type SearchParams = Promise<{ q?: string; position?: string; error?: string }>;
+type SearchParams = Promise<{
+  q?: string;
+  position?: string;
+  club?: string;
+  page?: string;
+  error?: string;
+}>;
 
+type ClubOption = { id: string; name: string };
+
+const PAGE_SIZE = 50;
 const POSITIONS = ["GK", "DEF", "MID", "FWD"] as const;
 
 const POSITION_STYLES: Record<string, string> = {
@@ -99,9 +110,17 @@ export default async function DraftPage({
     ? filters.position
     : undefined;
 
+  const page = Math.max(1, Number(filters.page ?? 1) || 1);
+
+  const { data: clubs } = await supabase
+    .from("clubs")
+    .select("id, name")
+    .order("name")
+    .returns<ClubOption[]>();
+
   let available = supabase
     .from("players")
-    .select("id, display_name, position, clubs (short_name)")
+    .select("id, display_name, position, photo_url, clubs (short_name)", { count: "exact" })
     .eq("is_active", true);
 
   if (takenIds.length > 0) {
@@ -113,21 +132,35 @@ export default async function DraftPage({
   if (position) {
     available = available.eq("position", position);
   }
+  if (filters.club) {
+    available = available.eq("club_id", filters.club);
+  }
 
-  const { data: players } = await available
+  const offset = (page - 1) * PAGE_SIZE;
+  const { data: players, count: availableCount } = await available
     .order("display_name")
-    .limit(40)
+    .range(offset, offset + PAGE_SIZE - 1)
     .returns<PlayerRow[]>();
+
+  const totalAvailable = availableCount ?? 0;
+  const lastPage = Math.max(1, Math.ceil(totalAvailable / PAGE_SIZE));
 
   const myRoster = madePicks.filter((pick) => pick.fantasy_team_id === myTeam?.id);
 
-  const returnQuery = (() => {
+  const queryFor = (targetPage: number) => {
     const next = new URLSearchParams();
     if (search) next.set("q", search);
     if (position) next.set("position", position);
+    if (filters.club) next.set("club", filters.club);
+    if (targetPage > 1) next.set("page", String(targetPage));
     const value = next.toString();
     return value ? `?${value}` : "";
-  })();
+  };
+
+  // Picking returns you to the page and filters you were browsing.
+  const returnQuery = queryFor(page);
+  const pageHref = (targetPage: number) =>
+    `/leagues/${league.id}/draft${queryFor(targetPage)}`;
 
   const isComplete = !nextPick;
 
@@ -206,14 +239,33 @@ export default async function DraftPage({
                 </option>
               ))}
             </select>
+            <select
+              name="club"
+              defaultValue={filters.club ?? ""}
+              suppressHydrationWarning
+              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500"
+            >
+              <option value="">All clubs</option>
+              {clubs?.map((club) => (
+                <option key={club.id} value={club.id}>
+                  {club.name}
+                </option>
+              ))}
+            </select>
             <button className="rounded-md border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-slate-400">
               Filter
             </button>
           </form>
 
-          <ul className="mt-3 divide-y divide-slate-800 rounded-lg border border-slate-800">
+          <p className="mt-3 text-sm text-slate-500">
+            {totalAvailable} available
+            {lastPage > 1 ? ` · page ${page} of ${lastPage}` : ""}
+          </p>
+
+          <ul className="mt-2 divide-y divide-slate-800 rounded-lg border border-slate-800">
             {players?.map((player) => (
-              <li key={player.id} className="flex items-center gap-3 px-4 py-2.5">
+              <li key={player.id} className="flex items-center gap-3 px-4 py-2">
+                <PlayerAvatar src={player.photo_url} name={player.display_name} />
                 <span
                   className={`w-11 rounded px-1.5 py-0.5 text-center text-xs font-semibold ${
                     POSITION_STYLES[player.position] ?? "bg-slate-700 text-slate-300"
@@ -236,7 +288,34 @@ export default async function DraftPage({
                 </form>
               </li>
             ))}
+            {players?.length === 0 ? (
+              <li className="px-4 py-6 text-center text-sm text-slate-500">
+                No available players match that.
+              </li>
+            ) : null}
           </ul>
+
+          {lastPage > 1 ? (
+            <div className="mt-3 flex items-center justify-between text-sm">
+              {page > 1 ? (
+                <Link href={pageHref(page - 1)} className="text-slate-400 hover:text-slate-200">
+                  ← Previous
+                </Link>
+              ) : (
+                <span />
+              )}
+              <span className="text-xs text-slate-600">
+                {page} / {lastPage}
+              </span>
+              {page < lastPage ? (
+                <Link href={pageHref(page + 1)} className="text-slate-400 hover:text-slate-200">
+                  Next →
+                </Link>
+              ) : (
+                <span />
+              )}
+            </div>
+          ) : null}
         </section>
       ) : null}
 

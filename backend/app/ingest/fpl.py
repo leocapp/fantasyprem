@@ -25,6 +25,8 @@ BOOTSTRAP_URL = f"{FPL_BASE}/bootstrap-static/"
 FIXTURES_URL = f"{FPL_BASE}/fixtures/"
 
 CREST_URL = "https://resources.premierleague.com/premierleague/badges/70/t{code}.png"
+# FPL gives `photo` as "223094.jpg"; the CDN serves the same id as a .png.
+PHOTO_URL = "https://resources.premierleague.com/premierleague/photos/players/110x140/p{code}.png"
 
 # FPL element_type -> our player_position enum. Type 5 is 'MNG' (managers),
 # which we skip: they aren't draftable players.
@@ -35,6 +37,13 @@ def fetch_json(url: str) -> Any:
     response = httpx.get(url, timeout=60.0, headers={"User-Agent": "FantasyPrem/0.1"})
     response.raise_for_status()
     return response.json()
+
+
+def photo_url(element: dict[str, Any]) -> str | None:
+    photo = element.get("photo")
+    if not photo:
+        return None
+    return PHOTO_URL.format(code=photo.rsplit(".", 1)[0])
 
 
 def build_position_map(element_types: list[dict[str, Any]]) -> dict[int, str]:
@@ -102,6 +111,7 @@ def player_rows(
                 "position": position,
                 "club_id": club_ids.get(str(element["team"])),
                 "shirt_number": element.get("squad_number"),
+                "photo_url": photo_url(element),
                 "is_active": element.get("status") != "u",
             }
         )

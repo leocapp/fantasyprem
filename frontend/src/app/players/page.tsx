@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import PlayerAvatar from "@/components/PlayerAvatar";
 import { createClient } from "@/lib/supabase/server";
 
 type PlayerRow = {
@@ -8,6 +9,7 @@ type PlayerRow = {
   display_name: string;
   position: string;
   shirt_number: number | null;
+  photo_url: string | null;
   clubs: { short_name: string; name: string } | null;
 };
 
@@ -55,7 +57,7 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
 
   let query = supabase
     .from("players")
-    .select("id, display_name, position, shirt_number, clubs (short_name, name)", {
+    .select("id, display_name, position, shirt_number, photo_url, clubs (short_name, name)", {
       count: "exact",
     })
     .eq("is_active", true);
@@ -160,7 +162,8 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
 
       <ul className="divide-y divide-slate-800 rounded-lg border border-slate-800">
         {players?.map((player) => (
-          <li key={player.id} className="flex items-center gap-3 px-4 py-2.5">
+          <li key={player.id} className="flex items-center gap-3 px-4 py-2">
+            <PlayerAvatar src={player.photo_url} name={player.display_name} />
             <span
               className={`w-11 rounded px-1.5 py-0.5 text-center text-xs font-semibold ${
                 POSITION_STYLES[player.position] ?? "bg-slate-700 text-slate-300"
