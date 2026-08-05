@@ -70,12 +70,20 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      <Link
-        href="/leagues"
-        className="rounded-md bg-emerald-600 px-4 py-2 text-center font-medium text-white hover:bg-emerald-500"
-      >
-        Your leagues
-      </Link>
+      <div className="flex gap-3">
+        <Link
+          href="/leagues"
+          className="flex-1 rounded-md bg-emerald-600 px-4 py-2 text-center font-medium text-white hover:bg-emerald-500"
+        >
+          Your leagues
+        </Link>
+        <Link
+          href="/players"
+          className="flex-1 rounded-md border border-slate-600 px-4 py-2 text-center font-medium text-slate-200 hover:border-slate-400"
+        >
+          Browse players
+        </Link>
+      </div>
     </main>
   );
 }

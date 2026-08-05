@@ -134,6 +134,28 @@ Other scripts: `npm run build`, `npm run lint`, `npm run format`.
 | `SUPABASE_JWT_SECRET`       | Only for projects still on the legacy HS256 secret           |
 | `DATABASE_URL`              | Postgres connection string (unused so far)                   |
 
+## Loading Premier League data
+
+The ingestion job pulls clubs, gameweeks, players and fixtures from the Fantasy Premier League API into Supabase.
+
+It writes with the **service role key**, so add that to `backend/.env` first (Dashboard → Project Settings → API → `service_role`):
+
+```
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+```
+
+Then, with the backend venv active:
+
+```bash
+cd ~/FantasyPrem/backend
+source .venv/bin/activate
+python -m app.ingest.fpl
+```
+
+Safe to re-run — every write is an upsert keyed on the provider's id, so repeat runs refresh injuries, scores and fixture status instead of duplicating rows. Run it again whenever you want fresh data.
+
+The endpoints are public but unofficial and undocumented; they can change shape without warning, and the terms are murky for anything commercial. Fine for building, worth revisiting before launch.
+
 ## Auth
 
 Pages: `/login` (sign in and sign up share one form), `/dashboard` (protected), `/auth/confirm` (handles links in Supabase emails).
