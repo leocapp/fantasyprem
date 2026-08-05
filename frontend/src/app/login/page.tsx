@@ -49,7 +49,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
         </p>
       ) : null}
 
-      <form className="flex flex-col gap-4">
+      {/* suppressHydrationWarning: password managers and browser autofill add
+          their own attributes to these fields before React hydrates. */}
+      <form className="flex flex-col gap-4" suppressHydrationWarning>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-slate-300">Email</span>
           <input
@@ -57,6 +59,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
             type="email"
             required
             autoComplete="email"
+            suppressHydrationWarning
             className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
         </label>
@@ -69,6 +72,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
             required
             minLength={6}
             autoComplete="current-password"
+            suppressHydrationWarning
             className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
           />
         </label>

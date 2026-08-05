@@ -102,15 +102,24 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
         </Link>
       </div>
 
-      <form className="flex flex-wrap gap-2">
+      {/* suppressHydrationWarning throughout: browser autofill and password
+          managers stamp their own attributes onto form fields before React
+          hydrates. It only applies one level deep, hence the repetition. */}
+      <form className="flex flex-wrap gap-2" suppressHydrationWarning>
         <input
           name="q"
           defaultValue={search}
           placeholder="Search name"
           className={`${controlClass} flex-1 min-w-[12rem]`}
+          suppressHydrationWarning
         />
 
-        <select name="position" defaultValue={position ?? ""} className={controlClass}>
+        <select
+          name="position"
+          defaultValue={position ?? ""}
+          className={controlClass}
+          suppressHydrationWarning
+        >
           <option value="">All positions</option>
           {POSITIONS.map((value) => (
             <option key={value} value={value}>
@@ -119,7 +128,12 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
           ))}
         </select>
 
-        <select name="club" defaultValue={params.club ?? ""} className={controlClass}>
+        <select
+          name="club"
+          defaultValue={params.club ?? ""}
+          className={controlClass}
+          suppressHydrationWarning
+        >
           <option value="">All clubs</option>
           {clubs?.map((club) => (
             <option key={club.id} value={club.id}>

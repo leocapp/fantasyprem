@@ -88,9 +88,25 @@ export default async function LeaguesPage({
       <div className="grid gap-6 sm:grid-cols-2">
         <section className="rounded-lg border border-slate-700 bg-slate-900/50 p-5">
           <h2 className="font-semibold">Create a league</h2>
-          <form action={createLeague} className="mt-4 flex flex-col gap-3 text-sm">
-            <input name="league_name" required minLength={3} placeholder="League name" className={inputClass} />
-            <input name="team_name" required minLength={2} placeholder="Your team name" className={inputClass} />
+          {/* suppressHydrationWarning: browser autofill mutates these fields
+              before React hydrates. */}
+          <form action={createLeague} className="mt-4 flex flex-col gap-3 text-sm" suppressHydrationWarning>
+            <input
+              name="league_name"
+              required
+              minLength={3}
+              placeholder="League name"
+              className={inputClass}
+              suppressHydrationWarning
+            />
+            <input
+              name="team_name"
+              required
+              minLength={2}
+              placeholder="Your team name"
+              className={inputClass}
+              suppressHydrationWarning
+            />
             <label className="flex items-center justify-between gap-2 text-slate-400">
               Teams
               <input
@@ -110,14 +126,22 @@ export default async function LeaguesPage({
 
         <section className="rounded-lg border border-slate-700 bg-slate-900/50 p-5">
           <h2 className="font-semibold">Join a league</h2>
-          <form action={joinLeague} className="mt-4 flex flex-col gap-3 text-sm">
+          <form action={joinLeague} className="mt-4 flex flex-col gap-3 text-sm" suppressHydrationWarning>
             <input
               name="join_code"
               required
               placeholder="Join code"
               className={`${inputClass} font-mono uppercase`}
+              suppressHydrationWarning
             />
-            <input name="team_name" required minLength={2} placeholder="Your team name" className={inputClass} />
+            <input
+              name="team_name"
+              required
+              minLength={2}
+              placeholder="Your team name"
+              className={inputClass}
+              suppressHydrationWarning
+            />
             <button className="rounded-md border border-slate-600 px-4 py-2 font-medium text-slate-200 hover:border-slate-400">
               Join
             </button>
