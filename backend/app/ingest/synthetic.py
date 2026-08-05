@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import random
 import sys
+from datetime import datetime, timezone
 from typing import Any
 
 from app.config import get_settings
@@ -146,9 +147,19 @@ def main(argv: list[str]) -> int:
         db.upsert("player_match_stats", rows, on_conflict="fixture_id,player_id")
         print(f"gameweek {target['number']}: wrote {len(rows)} fabricated rows")
 
-        # Mark it played so scoring treats the results as final.
+        # Mark it played so scoring treats the results as final. The deadline is
+        # pushed into the past too: a complete gameweek that is still accepting
+        # lineup edits is a contradiction, and leaves saved lineups deletable by
+        # a later transfer even though the results are already settled.
         db.update("fixtures", {"status": "finished"}, gameweek_id=f"eq.{target['id']}")
-        db.update("gameweeks", {"status": "complete"}, id=f"eq.{target['id']}")
+        db.update(
+            "gameweeks",
+            {
+                "status": "complete",
+                "deadline_at": datetime.now(timezone.utc).isoformat(),
+            },
+            id=f"eq.{target['id']}",
+        )
 
         scored = db.rpc("score_all", {"p_gameweek_id": target["id"]})
         print(f"scored {scored} league(s)")

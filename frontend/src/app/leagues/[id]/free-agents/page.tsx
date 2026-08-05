@@ -34,16 +34,6 @@ type SearchParams = Promise<{
 const PAGE_SIZE = 25;
 const POSITIONS = ["GK", "DEF", "MID", "FWD"] as const;
 
-const POSITION_STYLES: Record<string, string> = {
-  GK: "bg-amber-500/15 text-amber-300",
-  DEF: "bg-sky-500/15 text-sky-300",
-  MID: "bg-emerald-500/15 text-emerald-300",
-  FWD: "bg-rose-500/15 text-rose-300",
-};
-
-const controlClass =
-  "rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500";
-
 export const dynamic = "force-dynamic";
 
 export default async function FreeAgentsPage({
@@ -144,27 +134,16 @@ export default async function FreeAgentsPage({
     (roster ?? []).filter((row) => row.players?.position === target);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8 pt-16">
+    <main className="page">
       <div>
-        <Link href={`/leagues/${league.id}`} className="text-sm text-slate-500 hover:text-slate-300">
-          ← {league.name}
-        </Link>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight">Free agents</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <h1 className="page-title">Free agents</h1>
+        <p className="page-subtitle">
           Swaps are like for like — drop a midfielder to add a midfielder.
         </p>
       </div>
 
-      {filters.error ? (
-        <p className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-          {filters.error}
-        </p>
-      ) : null}
-      {filters.message ? (
-        <p className="rounded-md border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-          {filters.message}
-        </p>
-      ) : null}
+      {filters.error ? <p className="notice notice-error">{filters.error}</p> : null}
+      {filters.message ? <p className="notice notice-success">{filters.message}</p> : null}
 
       <form className="flex flex-wrap gap-2" suppressHydrationWarning>
         <input
@@ -172,13 +151,13 @@ export default async function FreeAgentsPage({
           defaultValue={search}
           placeholder="Search name"
           suppressHydrationWarning
-          className={`${controlClass} min-w-[10rem] flex-1`}
+          className="input min-w-[10rem] flex-1"
         />
         <select
           name="position"
           defaultValue={position ?? ""}
           suppressHydrationWarning
-          className={controlClass}
+          className="select"
         >
           <option value="">All positions</option>
           {POSITIONS.map((value) => (
@@ -191,7 +170,7 @@ export default async function FreeAgentsPage({
           name="club"
           defaultValue={filters.club ?? ""}
           suppressHydrationWarning
-          className={controlClass}
+          className="select"
         >
           <option value="">All clubs</option>
           {clubs?.map((club) => (
@@ -200,31 +179,23 @@ export default async function FreeAgentsPage({
             </option>
           ))}
         </select>
-        <button className="rounded-md border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-slate-400">
-          Filter
-        </button>
+        <button className="btn btn-ghost">Filter</button>
       </form>
 
-      <p className="text-sm text-slate-500">
+      <p className="text-sm dim">
         {total} available{lastPage > 1 ? ` · page ${page} of ${lastPage}` : ""}
       </p>
 
-      <ul className="divide-y divide-slate-800 rounded-lg border border-slate-800">
+      <ul className="list">
         {players?.map((player) => {
           const candidates = myPlayersByPosition(player.position);
 
           return (
-            <li key={player.id} className="flex items-center gap-3 px-4 py-2">
+            <li key={player.id} className="row">
               <PlayerAvatar src={player.photo_url} name={player.display_name} />
-              <span
-                className={`w-11 rounded px-1.5 py-0.5 text-center text-xs font-semibold ${
-                  POSITION_STYLES[player.position] ?? "bg-slate-700 text-slate-300"
-                }`}
-              >
-                {player.position}
-              </span>
+              <span className={`badge badge-${player.position}`}>{player.position}</span>
               <span className="flex-1 truncate font-medium">{player.display_name}</span>
-              <span className="text-sm text-slate-500">{player.clubs?.short_name ?? "—"}</span>
+              <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
 
               <form action={swapPlayer} className="flex items-center gap-2">
                 <input type="hidden" name="league_id" value={league.id} />
@@ -234,7 +205,7 @@ export default async function FreeAgentsPage({
                   name="drop_player_id"
                   defaultValue=""
                   suppressHydrationWarning
-                  className="max-w-[9rem] rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-100 outline-none focus:border-slate-500"
+                  className="select select-sm max-w-[9rem]"
                 >
                   <option value="">Drop…</option>
                   {candidates.map((row) => (
@@ -245,7 +216,7 @@ export default async function FreeAgentsPage({
                 </select>
                 <button
                   disabled={league.status !== "active" || candidates.length === 0}
-                  className="rounded-md bg-emerald-600 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-600"
+                  className="btn btn-primary btn-sm"
                 >
                   Swap
                 </button>
@@ -254,9 +225,7 @@ export default async function FreeAgentsPage({
           );
         })}
         {players?.length === 0 ? (
-          <li className="px-4 py-6 text-center text-sm text-slate-500">
-            No free agents match that.
-          </li>
+          <li className="row justify-center py-6 text-sm dim">No free agents match that.</li>
         ) : null}
       </ul>
 
@@ -265,17 +234,20 @@ export default async function FreeAgentsPage({
           {page > 1 ? (
             <Link
               href={`/leagues/${league.id}/free-agents${queryFor(page - 1)}`}
-              className="text-slate-400 hover:text-slate-200"
+              className="muted hover:text-[var(--text)]"
             >
               ← Previous
             </Link>
           ) : (
             <span />
           )}
+          <span className="numeric text-xs dim">
+            {page} / {lastPage}
+          </span>
           {page < lastPage ? (
             <Link
               href={`/leagues/${league.id}/free-agents${queryFor(page + 1)}`}
-              className="text-slate-400 hover:text-slate-200"
+              className="muted hover:text-[var(--text)]"
             >
               Next →
             </Link>

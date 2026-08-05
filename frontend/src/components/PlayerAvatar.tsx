@@ -8,7 +8,7 @@
 export default function PlayerAvatar({ src, name }: { src: string | null; name: string }) {
   if (!src) {
     return (
-      <span className="flex h-9 w-7 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] font-medium text-slate-500">
+      <span className="flex h-9 w-7 shrink-0 items-center justify-center rounded bg-[var(--surface-raised)] text-[10px] font-medium text-[var(--text-dim)]">
         {name.slice(0, 2).toUpperCase()}
       </span>
     );
@@ -22,7 +22,7 @@ export default function PlayerAvatar({ src, name }: { src: string | null; name: 
       width={28}
       height={36}
       loading="lazy"
-      className="h-9 w-7 shrink-0 rounded bg-slate-800 object-cover"
+      className="h-9 w-7 shrink-0 rounded bg-[var(--surface-raised)] object-cover"
     />
   );
 }

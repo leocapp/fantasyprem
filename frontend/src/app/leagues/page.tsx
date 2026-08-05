@@ -21,9 +21,6 @@ type MembershipRow = {
 
 export const dynamic = "force-dynamic";
 
-const inputClass =
-  "rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-slate-500";
-
 export default async function LeaguesPage({
   searchParams,
 }: {
@@ -46,57 +43,43 @@ export default async function LeaguesPage({
     .returns<MembershipRow[]>();
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 p-8 pt-16">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Your leagues</h1>
-        <Link href="/dashboard" className="text-sm text-slate-500 hover:text-slate-300">
-          Dashboard
-        </Link>
-      </div>
+    <main className="page page-narrow">
+      <h1 className="page-title">Your leagues</h1>
 
-      {error ? (
-        <p className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-          {error}
-        </p>
-      ) : null}
+      {error ? <p className="notice notice-error">{error}</p> : null}
 
       {memberships && memberships.length > 0 ? (
-        <ul className="flex flex-col gap-2">
+        <ul className="list">
           {memberships.map((membership) => (
             <li key={membership.id}>
-              <Link
-                href={`/leagues/${membership.leagues?.id}`}
-                className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-900/50 px-4 py-3 hover:border-slate-500"
-              >
-                <span>
+              <Link href={`/leagues/${membership.leagues?.id}`} className="row-link">
+                <span className="flex-1">
                   <span className="font-medium">{membership.leagues?.name}</span>
-                  <span className="ml-2 text-sm text-slate-500">as {membership.name}</span>
+                  <span className="ml-2 text-sm dim">as {membership.name}</span>
                 </span>
-                <span className="font-mono text-xs uppercase text-slate-500">
-                  {membership.leagues?.status}
-                </span>
+                <span className="text-xs uppercase dim">{membership.leagues?.status}</span>
               </Link>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-slate-400">
+        <p className="muted">
           You&apos;re not in a league yet. Create one, or join with a friend&apos;s code.
         </p>
       )}
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        <section className="rounded-lg border border-slate-700 bg-slate-900/50 p-5">
+      <div className="grid gap-5 sm:grid-cols-2">
+        <section className="card">
           <h2 className="font-semibold">Create a league</h2>
           {/* suppressHydrationWarning: browser autofill mutates these fields
               before React hydrates. */}
-          <form action={createLeague} className="mt-4 flex flex-col gap-3 text-sm" suppressHydrationWarning>
+          <form action={createLeague} className="mt-4 flex flex-col gap-3" suppressHydrationWarning>
             <input
               name="league_name"
               required
               minLength={3}
               placeholder="League name"
-              className={inputClass}
+              className="input"
               suppressHydrationWarning
             />
             <input
@@ -104,10 +87,10 @@ export default async function LeaguesPage({
               required
               minLength={2}
               placeholder="Your team name"
-              className={inputClass}
+              className="input"
               suppressHydrationWarning
             />
-            <label className="flex items-center justify-between gap-2 text-slate-400">
+            <label className="flex items-center justify-between gap-2 text-sm muted">
               Teams
               <input
                 name="max_teams"
@@ -115,23 +98,22 @@ export default async function LeaguesPage({
                 min={2}
                 max={20}
                 defaultValue={10}
-                className={`${inputClass} w-20`}
+                className="input w-20"
+                suppressHydrationWarning
               />
             </label>
-            <button className="rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500">
-              Create
-            </button>
+            <button className="btn btn-primary">Create</button>
           </form>
         </section>
 
-        <section className="rounded-lg border border-slate-700 bg-slate-900/50 p-5">
+        <section className="card">
           <h2 className="font-semibold">Join a league</h2>
-          <form action={joinLeague} className="mt-4 flex flex-col gap-3 text-sm" suppressHydrationWarning>
+          <form action={joinLeague} className="mt-4 flex flex-col gap-3" suppressHydrationWarning>
             <input
               name="join_code"
               required
               placeholder="Join code"
-              className={`${inputClass} font-mono uppercase`}
+              className="input numeric uppercase"
               suppressHydrationWarning
             />
             <input
@@ -139,12 +121,10 @@ export default async function LeaguesPage({
               required
               minLength={2}
               placeholder="Your team name"
-              className={inputClass}
+              className="input"
               suppressHydrationWarning
             />
-            <button className="rounded-md border border-slate-600 px-4 py-2 font-medium text-slate-200 hover:border-slate-400">
-              Join
-            </button>
+            <button className="btn btn-ghost">Join</button>
           </form>
         </section>
       </div>

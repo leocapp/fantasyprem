@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import { apiFetch, API_BASE_URL } from "@/lib/api";
+import { createClient } from "@/lib/supabase/server";
+import { getSupabaseEnv } from "@/lib/supabase/env";
 
 type HelloResponse = {
   message: string;
@@ -8,15 +10,13 @@ type HelloResponse = {
   environment: string;
 };
 
-// Always render fresh so the backend status reflects reality on reload.
 export const dynamic = "force-dynamic";
 
 async function getBackendStatus(): Promise<
   { ok: true; data: HelloResponse } | { ok: false; error: string }
 > {
   try {
-    const data = await apiFetch<HelloResponse>("/api/hello");
-    return { ok: true, data };
+    return { ok: true, data: await apiFetch<HelloResponse>("/api/hello") };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
   }
@@ -25,40 +25,44 @@ async function getBackendStatus(): Promise<
 export default async function Home() {
   const status = await getBackendStatus();
 
+  let signedIn = false;
+  if (getSupabaseEnv()) {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    signedIn = Boolean(user);
+  }
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-8 p-8">
+    <main className="page page-narrow" style={{ paddingTop: "5rem" }}>
       <div>
         <h1 className="text-4xl font-bold tracking-tight">FantasyPrem</h1>
-        <p className="mt-2 text-slate-400">
+        <p className="page-subtitle text-base">
           Draft real players. Score real points. Snake draft, head-to-head, Premier League.
         </p>
-        <Link
-          href="/login"
-          className="mt-4 inline-block rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500"
-        >
-          Sign in
+        <Link href={signedIn ? "/leagues" : "/login"} className="btn btn-primary mt-5">
+          {signedIn ? "Your leagues" : "Sign in"}
         </Link>
       </div>
 
-      <section className="rounded-lg border border-slate-700 bg-slate-900/50 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-          Backend connection
-        </h2>
+      <section className="card">
+        <h2 className="section-label">Backend connection</h2>
         {status.ok ? (
           <div className="mt-3 space-y-1">
-            <p className="text-emerald-400">Connected to {API_BASE_URL}</p>
-            <p className="font-mono text-sm text-slate-300">{status.data.message}</p>
-            <p className="font-mono text-xs text-slate-500">
+            <p style={{ color: "var(--accent-hover)" }}>Connected to {API_BASE_URL}</p>
+            <p className="numeric text-sm muted">{status.data.message}</p>
+            <p className="numeric text-xs dim">
               {status.data.service} · {status.data.environment}
             </p>
           </div>
         ) : (
           <div className="mt-3 space-y-1">
-            <p className="text-amber-400">Could not reach {API_BASE_URL}</p>
-            <p className="font-mono text-xs text-slate-500">{status.error}</p>
-            <p className="text-sm text-slate-400">
-              Start the API with <code className="text-slate-300">uvicorn app.main:app --reload</code>{" "}
-              in the <code className="text-slate-300">backend/</code> directory.
+            <p style={{ color: "var(--warning)" }}>Could not reach {API_BASE_URL}</p>
+            <p className="numeric text-xs dim">{status.error}</p>
+            <p className="text-sm muted">
+              Start the API with <code>uvicorn app.main:app --reload</code> in{" "}
+              <code>backend/</code>.
             </p>
           </div>
         )}

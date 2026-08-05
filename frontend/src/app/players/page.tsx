@@ -15,20 +15,26 @@ type PlayerRow = {
 
 type ClubOption = { id: string; name: string; short_name: string };
 
-type SearchParams = Promise<{ q?: string; position?: string; club?: string; page?: string }>;
+type MembershipRow = {
+  leagues: { id: string; name: string } | null;
+};
+
+type OwnerRow = {
+  player_id: string;
+  fantasy_teams: { id: string; name: string } | null;
+};
+
+type SearchParams = Promise<{
+  q?: string;
+  position?: string;
+  club?: string;
+  page?: string;
+  league?: string;
+  owner?: string;
+}>;
 
 const PAGE_SIZE = 50;
 const POSITIONS = ["GK", "DEF", "MID", "FWD"] as const;
-
-const POSITION_STYLES: Record<string, string> = {
-  GK: "bg-amber-500/15 text-amber-300",
-  DEF: "bg-sky-500/15 text-sky-300",
-  MID: "bg-emerald-500/15 text-emerald-300",
-  FWD: "bg-rose-500/15 text-rose-300",
-};
-
-const controlClass =
-  "rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500";
 
 export const dynamic = "force-dynamic";
 
@@ -42,12 +48,43 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
 
   if (!user) redirect("/login");
 
+  const { data: memberships } = await supabase
+    .from("fantasy_teams")
+    .select("leagues (id, name)")
+    .eq("owner_id", user.id)
+    .returns<MembershipRow[]>();
+
+  const myLeagues = (memberships ?? [])
+    .map((row) => row.leagues)
+    .filter((row): row is NonNullable<MembershipRow["leagues"]> => Boolean(row));
+
+  // Ownership only means something inside a league, so pick one: the requested
+  // league, otherwise the only one they're in.
+  const activeLeagueId =
+    myLeagues.find((row) => row.id === params.league)?.id ??
+    (myLeagues.length === 1 ? myLeagues[0].id : undefined);
+
+  const { data: owners } = activeLeagueId
+    ? await supabase
+        .from("roster_entries")
+        .select("player_id, fantasy_teams (id, name)")
+        .eq("league_id", activeLeagueId)
+        .is("dropped_at", null)
+        .returns<OwnerRow[]>()
+    : { data: null };
+
+  const ownerBy = new Map(
+    (owners ?? []).map((row) => [row.player_id, row.fantasy_teams?.name ?? "Taken"]),
+  );
+  const ownedIds = (owners ?? []).map((row) => row.player_id);
+
   const page = Math.max(1, Number(params.page ?? 1) || 1);
   const position = POSITIONS.includes(params.position as (typeof POSITIONS)[number])
     ? params.position
     : undefined;
   // Commas and parentheses are syntax in PostgREST's or() filter, so strip them.
   const search = (params.q ?? "").replace(/[,()]/g, "").trim();
+  const ownerFilter = params.owner === "free" || params.owner === "taken" ? params.owner : undefined;
 
   const { data: clubs } = await supabase
     .from("clubs")
@@ -65,11 +102,12 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
   if (search) {
     query = query.or(`display_name.ilike.%${search}%,last_name.ilike.%${search}%`);
   }
-  if (position) {
-    query = query.eq("position", position);
-  }
-  if (params.club) {
-    query = query.eq("club_id", params.club);
+  if (position) query = query.eq("position", position);
+  if (params.club) query = query.eq("club_id", params.club);
+
+  if (activeLeagueId && ownedIds.length > 0) {
+    if (ownerFilter === "free") query = query.not("id", "in", `(${ownedIds.join(",")})`);
+    if (ownerFilter === "taken") query = query.in("id", ownedIds);
   }
 
   const from = (page - 1) * PAGE_SIZE;
@@ -90,36 +128,36 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
     if (search) next.set("q", search);
     if (position) next.set("position", position);
     if (params.club) next.set("club", params.club);
+    if (activeLeagueId) next.set("league", activeLeagueId);
+    if (ownerFilter) next.set("owner", ownerFilter);
     if (target > 1) next.set("page", String(target));
-    const query = next.toString();
-    return query ? `/players?${query}` : "/players";
+    const value = next.toString();
+    return value ? `/players?${value}` : "/players";
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8 pt-16">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Players</h1>
-        <Link href="/dashboard" className="text-sm text-slate-500 hover:text-slate-300">
-          Dashboard
-        </Link>
+    <main className="page">
+      <div>
+        <h1 className="page-title">Players</h1>
+        {activeLeagueId ? (
+          <p className="page-subtitle">
+            Showing ownership in {myLeagues.find((row) => row.id === activeLeagueId)?.name}.
+          </p>
+        ) : null}
       </div>
 
-      {/* suppressHydrationWarning throughout: browser autofill and password
-          managers stamp their own attributes onto form fields before React
-          hydrates. It only applies one level deep, hence the repetition. */}
       <form className="flex flex-wrap gap-2" suppressHydrationWarning>
         <input
           name="q"
           defaultValue={search}
           placeholder="Search name"
-          className={`${controlClass} flex-1 min-w-[12rem]`}
+          className="input min-w-[12rem] flex-1"
           suppressHydrationWarning
         />
-
         <select
           name="position"
           defaultValue={position ?? ""}
-          className={controlClass}
+          className="select"
           suppressHydrationWarning
         >
           <option value="">All positions</option>
@@ -129,11 +167,10 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
             </option>
           ))}
         </select>
-
         <select
           name="club"
           defaultValue={params.club ?? ""}
-          className={controlClass}
+          className="select"
           suppressHydrationWarning
         >
           <option value="">All clubs</option>
@@ -144,56 +181,91 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
           ))}
         </select>
 
-        <button className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">
-          Filter
-        </button>
+        {myLeagues.length > 1 ? (
+          <select
+            name="league"
+            defaultValue={activeLeagueId ?? ""}
+            className="select"
+            suppressHydrationWarning
+          >
+            <option value="">No league</option>
+            {myLeagues.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        ) : activeLeagueId ? (
+          <input type="hidden" name="league" value={activeLeagueId} />
+        ) : null}
+
+        {activeLeagueId ? (
+          <select
+            name="owner"
+            defaultValue={ownerFilter ?? ""}
+            className="select"
+            suppressHydrationWarning
+          >
+            <option value="">Everyone</option>
+            <option value="free">Free agents</option>
+            <option value="taken">Rostered</option>
+          </select>
+        ) : null}
+
+        <button className="btn btn-ghost">Filter</button>
       </form>
 
-      {error ? (
-        <p className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-          {error.message}
-        </p>
-      ) : null}
+      {error ? <p className="notice notice-error">{error.message}</p> : null}
 
-      <p className="text-sm text-slate-500">
+      <p className="text-sm dim">
         {total} {total === 1 ? "player" : "players"}
         {total > PAGE_SIZE ? ` · page ${page} of ${lastPage}` : ""}
       </p>
 
-      <ul className="divide-y divide-slate-800 rounded-lg border border-slate-800">
-        {players?.map((player) => (
-          <li key={player.id} className="flex items-center gap-3 px-4 py-2">
-            <PlayerAvatar src={player.photo_url} name={player.display_name} />
-            <span
-              className={`w-11 rounded px-1.5 py-0.5 text-center text-xs font-semibold ${
-                POSITION_STYLES[player.position] ?? "bg-slate-700 text-slate-300"
-              }`}
-            >
-              {player.position}
-            </span>
-            <span className="flex-1 font-medium">{player.display_name}</span>
-            <span className="text-sm text-slate-500">{player.clubs?.short_name ?? "—"}</span>
-            <span className="w-8 text-right font-mono text-xs text-slate-600">
-              {player.shirt_number ?? ""}
-            </span>
-          </li>
-        ))}
+      <ul className="list">
+        {players?.map((player) => {
+          const owner = ownerBy.get(player.id);
+
+          return (
+            <li key={player.id} className="row">
+              <PlayerAvatar src={player.photo_url} name={player.display_name} />
+              <span className={`badge badge-${player.position}`}>{player.position}</span>
+              <span className="flex-1 truncate font-medium">{player.display_name}</span>
+              <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
+              {activeLeagueId ? (
+                <span
+                  className={`w-24 truncate text-right text-xs ${owner ? "muted" : "dim"}`}
+                  title={owner ?? "Free agent"}
+                >
+                  {owner ?? "free agent"}
+                </span>
+              ) : (
+                <span className="numeric w-8 text-right text-xs dim">
+                  {player.shirt_number ?? ""}
+                </span>
+              )}
+            </li>
+          );
+        })}
         {players?.length === 0 ? (
-          <li className="px-4 py-6 text-center text-sm text-slate-500">No players match that.</li>
+          <li className="row justify-center py-6 text-sm dim">No players match that.</li>
         ) : null}
       </ul>
 
       {lastPage > 1 ? (
         <div className="flex items-center justify-between text-sm">
           {page > 1 ? (
-            <Link href={pageHref(page - 1)} className="text-slate-400 hover:text-slate-200">
+            <Link href={pageHref(page - 1)} className="muted hover:text-[var(--text)]">
               ← Previous
             </Link>
           ) : (
             <span />
           )}
+          <span className="numeric text-xs dim">
+            {page} / {lastPage}
+          </span>
           {page < lastPage ? (
-            <Link href={pageHref(page + 1)} className="text-slate-400 hover:text-slate-200">
+            <Link href={pageHref(page + 1)} className="muted hover:text-[var(--text)]">
               Next →
             </Link>
           ) : (

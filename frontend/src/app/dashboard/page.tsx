@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { signOut } from "@/app/auth/actions";
 import { apiFetch } from "@/lib/api";
 import { createClient } from "@/lib/supabase/server";
 
-type MeResponse = {
+type MeResponse = { id: string; email: string | null; role: string | null };
+
+type MembershipRow = {
   id: string;
-  email: string | null;
-  role: string | null;
+  name: string;
+  leagues: { id: string; name: string; status: string } | null;
 };
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,12 @@ export default async function DashboardPage() {
     data: { session },
   } = await supabase.auth.getSession();
 
+  const { data: memberships } = await supabase
+    .from("fantasy_teams")
+    .select("id, name, leagues (id, name, status)")
+    .eq("owner_id", user.id)
+    .returns<MembershipRow[]>();
+
   let backend: { ok: true; data: MeResponse } | { ok: false; error: string };
   try {
     backend = {
@@ -39,51 +46,62 @@ export default async function DashboardPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-8 p-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="mt-1 text-slate-400">Signed in as {user.email}</p>
-        </div>
-        <form action={signOut}>
-          <button className="rounded-md border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:border-slate-400">
-            Sign out
-          </button>
-        </form>
+    <main className="page page-narrow">
+      <div>
+        <h1 className="page-title">Dashboard</h1>
+        <p className="page-subtitle">Signed in as {user.email}</p>
       </div>
 
-      <section className="rounded-lg border border-slate-700 bg-slate-900/50 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-          Backend token verification
-        </h2>
-        {backend.ok ? (
-          <div className="mt-3 space-y-1">
-            <p className="text-emerald-400">FastAPI verified your Supabase JWT.</p>
-            <p className="font-mono text-xs text-slate-500">user id: {backend.data.id}</p>
-            <p className="font-mono text-xs text-slate-500">role: {backend.data.role ?? "—"}</p>
-          </div>
+      <section>
+        <h2 className="section-label">Your leagues</h2>
+        {memberships && memberships.length > 0 ? (
+          <ul className="list mt-3">
+            {memberships.map((membership) => (
+              <li key={membership.id}>
+                <Link href={`/leagues/${membership.leagues?.id}`} className="row-link">
+                  <span className="flex-1">
+                    <span className="font-medium">{membership.leagues?.name}</span>
+                    <span className="ml-2 text-sm dim">as {membership.name}</span>
+                  </span>
+                  <span className="text-xs uppercase dim">{membership.leagues?.status}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         ) : (
-          <div className="mt-3 space-y-1">
-            <p className="text-amber-400">Backend rejected or could not be reached.</p>
-            <p className="font-mono text-xs text-slate-500">{backend.error}</p>
-          </div>
+          <p className="mt-3 muted">
+            You&apos;re not in a league yet.{" "}
+            <Link href="/leagues" className="underline">
+              Create or join one
+            </Link>
+            .
+          </p>
         )}
       </section>
 
       <div className="flex gap-3">
-        <Link
-          href="/leagues"
-          className="flex-1 rounded-md bg-emerald-600 px-4 py-2 text-center font-medium text-white hover:bg-emerald-500"
-        >
+        <Link href="/leagues" className="btn btn-primary flex-1">
           Your leagues
         </Link>
-        <Link
-          href="/players"
-          className="flex-1 rounded-md border border-slate-600 px-4 py-2 text-center font-medium text-slate-200 hover:border-slate-400"
-        >
+        <Link href="/players" className="btn btn-ghost flex-1">
           Browse players
         </Link>
       </div>
+
+      <section className="card">
+        <h2 className="section-label">Backend token verification</h2>
+        {backend.ok ? (
+          <div className="mt-3 space-y-1">
+            <p style={{ color: "var(--accent-hover)" }}>FastAPI verified your Supabase JWT.</p>
+            <p className="numeric text-xs dim">user id: {backend.data.id}</p>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-1">
+            <p style={{ color: "var(--warning)" }}>Backend rejected or could not be reached.</p>
+            <p className="numeric text-xs dim">{backend.error}</p>
+          </div>
+        )}
+      </section>
     </main>
   );
 }

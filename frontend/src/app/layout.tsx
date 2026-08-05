@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+
+import AppNav from "@/components/AppNav";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,7 +18,8 @@ export default function RootLayout({
     <html lang="en">
       {/* suppressHydrationWarning: browser extensions (Grammarly, etc.) inject
           attributes into <body> before React hydrates. */}
-      <body className="min-h-screen antialiased" suppressHydrationWarning>
+      <body className="min-h-screen" suppressHydrationWarning>
+        <AppNav />
         {children}
       </body>
     </html>

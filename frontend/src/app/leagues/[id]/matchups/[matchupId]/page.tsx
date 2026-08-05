@@ -155,7 +155,7 @@ export default async function MatchupPage({
     if (!teamId) {
       return (
         <section className="flex-1">
-          <h2 className="font-semibold text-slate-500">Bye week</h2>
+          <h2 className="font-semibold dim">Bye week</h2>
         </section>
       );
     }
@@ -172,44 +172,48 @@ export default async function MatchupPage({
 
     return (
       <section className="flex-1">
-        <div className="flex items-baseline justify-between">
-          <h2 className="font-semibold">{nameBy.get(teamId) ?? "—"}</h2>
-          <span className="font-mono text-lg">{played ? points : "–"}</span>
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="truncate font-semibold">{nameBy.get(teamId) ?? "—"}</h2>
+          <span className="numeric text-lg">{played ? points : "–"}</span>
         </div>
-        <p className="text-xs text-slate-600">{lineup?.formation ?? "no lineup set"}</p>
+        <p className="text-xs dim">{lineup?.formation ?? "no lineup set"}</p>
 
-        <ul className="mt-3 divide-y divide-slate-800 rounded-lg border border-slate-800">
+        <ul className="list mt-3">
           {starters.map((row) => (
-            <li key={row.player_id} className="flex items-center gap-2 px-3 py-2">
-              <PlayerAvatar src={row.players?.photo_url ?? null} name={row.players?.display_name ?? "?"} />
-              <span className="min-w-0 flex-1">
+            <li key={row.player_id} className="row gap-2">
+              <PlayerAvatar
+                src={row.players?.photo_url ?? null}
+                name={row.players?.display_name ?? "?"}
+              />
+              <Link
+                href={`/leagues/${id}/players/${row.player_id}?gw=${matchup.gameweeks?.number}`}
+                className="min-w-0 flex-1 hover:underline"
+              >
                 <span className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-medium">
-                    {row.players?.display_name}
-                  </span>
+                  <span className="truncate text-sm font-medium">{row.players?.display_name}</span>
                   {row.is_captain ? (
                     <span className="rounded bg-amber-500/20 px-1 text-[10px] font-bold text-amber-300">
                       C
                     </span>
                   ) : null}
                   {row.is_vice_captain ? (
-                    <span className="rounded bg-slate-700 px-1 text-[10px] font-bold text-slate-300">
+                    <span className="rounded bg-[var(--surface-raised)] px-1 text-[10px] font-bold text-[var(--text-muted)]">
                       V
                     </span>
                   ) : null}
                 </span>
-                <span className="block truncate text-xs text-slate-500">
+                <span className="block truncate text-xs dim">
                   {row.players?.position} · {row.players?.clubs?.short_name ?? "—"} ·{" "}
                   {statSummary(statsBy.get(row.player_id))}
                 </span>
-              </span>
-              <span className="font-mono text-sm">
+              </Link>
+              <span className="numeric text-sm">
                 {played ? (pointsBy.get(row.player_id) ?? 0) : "–"}
               </span>
             </li>
           ))}
           {starters.length === 0 ? (
-            <li className="px-3 py-4 text-center text-xs text-slate-600">
+            <li className="row justify-center py-4 text-xs dim">
               No lineup was set for this gameweek.
             </li>
           ) : null}
@@ -219,15 +223,13 @@ export default async function MatchupPage({
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 p-8 pt-16">
+    <main className="page">
       <div>
-        <Link href={`/leagues/${id}`} className="text-sm text-slate-500 hover:text-slate-300">
+        <Link href={`/leagues/${id}`} className="text-sm dim hover:text-[var(--text)]">
           ← Back to league
         </Link>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight">
-          Gameweek {matchup.gameweeks?.number}
-        </h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <h1 className="page-title mt-1">Gameweek {matchup.gameweeks?.number}</h1>
+        <p className="page-subtitle">
           {played ? `Final · ${matchup.home_points} – ${matchup.away_points}` : "Not yet played"}
         </p>
       </div>
@@ -237,7 +239,7 @@ export default async function MatchupPage({
         {renderSide(matchup.away_team_id, matchup.away_points)}
       </div>
 
-      <p className="text-xs text-slate-600">
+      <p className="text-xs dim">
         Captain&apos;s points are doubled in the team total, so the column above will not sum to the
         score.
       </p>

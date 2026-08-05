@@ -13,9 +13,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
   if (!getSupabaseEnv()) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 p-8">
-        <h1 className="text-2xl font-bold">Supabase not configured</h1>
-        <p className="text-slate-400">
+      <main className="page page-narrow" style={{ paddingTop: "5rem" }}>
+        <h1 className="page-title">Supabase not configured</h1>
+        <p className="muted">
           Add <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> to{" "}
           <code>frontend/.env.local</code>, then restart the dev server.
         </p>
@@ -31,41 +31,32 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   if (user) redirect("/dashboard");
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 p-8">
+    <main className="page page-narrow" style={{ maxWidth: "26rem", paddingTop: "5rem" }}>
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Sign in to FantasyPrem</h1>
-        <p className="mt-1 text-sm text-slate-400">New here? Use the same form to create an account.</p>
+        <h1 className="page-title">Sign in to FantasyPrem</h1>
+        <p className="page-subtitle">New here? The same form creates an account.</p>
       </div>
 
-      {error ? (
-        <p className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-          {error}
-        </p>
-      ) : null}
-
-      {message ? (
-        <p className="rounded-md border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-          {message}
-        </p>
-      ) : null}
+      {error ? <p className="notice notice-error">{error}</p> : null}
+      {message ? <p className="notice notice-success">{message}</p> : null}
 
       {/* suppressHydrationWarning: password managers and browser autofill add
           their own attributes to these fields before React hydrates. */}
       <form className="flex flex-col gap-4" suppressHydrationWarning>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-slate-300">Email</span>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="muted">Email</span>
           <input
             name="email"
             type="email"
             required
             autoComplete="email"
             suppressHydrationWarning
-            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="input"
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-slate-300">Password</span>
+        <label className="flex flex-col gap-1.5 text-sm">
+          <span className="muted">Password</span>
           <input
             name="password"
             type="password"
@@ -73,27 +64,21 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
             minLength={6}
             autoComplete="current-password"
             suppressHydrationWarning
-            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+            className="input"
           />
         </label>
 
         <div className="flex gap-3">
-          <button
-            formAction={login}
-            className="flex-1 rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500"
-          >
+          <button formAction={login} className="btn btn-primary flex-1">
             Sign in
           </button>
-          <button
-            formAction={signup}
-            className="flex-1 rounded-md border border-slate-600 px-4 py-2 font-medium text-slate-200 hover:border-slate-400"
-          >
+          <button formAction={signup} className="btn btn-ghost flex-1">
             Create account
           </button>
         </div>
       </form>
 
-      <Link href="/" className="text-sm text-slate-500 hover:text-slate-300">
+      <Link href="/" className="text-sm dim hover:text-[var(--text)]">
         ← Back home
       </Link>
     </main>

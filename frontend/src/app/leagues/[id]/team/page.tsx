@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import PlayerAvatar from "@/components/PlayerAvatar";
@@ -134,14 +133,11 @@ export default async function TeamPage({
   }));
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-8 pt-16">
+    <main className="page page-narrow">
       <div>
-        <Link href={`/leagues/${league.id}`} className="text-sm text-slate-500 hover:text-slate-300">
-          ← {league.name}
-        </Link>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight">{team.name}</h1>
+        <h1 className="page-title">{team.name}</h1>
         {gameweek ? (
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="page-subtitle">
             Gameweek {gameweek.number} · locks{" "}
             {new Date(gameweek.deadline_at).toLocaleString("en-GB", {
               dateStyle: "medium",
@@ -151,23 +147,13 @@ export default async function TeamPage({
         ) : null}
       </div>
 
-      {error ? (
-        <p className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-          {error}
-        </p>
-      ) : null}
-      {message ? (
-        <p className="rounded-md border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
-          {message}
-        </p>
-      ) : null}
+      {error ? <p className="notice notice-error">{error}</p> : null}
+      {message ? <p className="notice notice-success">{message}</p> : null}
 
       {players.length === 0 ? (
-        <p className="text-slate-400">
-          Your roster is empty — it fills up when the draft runs.
-        </p>
+        <p className="muted">Your roster is empty — it fills up when the draft runs.</p>
       ) : !gameweek ? (
-        <p className="text-slate-400">
+        <p className="muted">
           No gameweek is open for edits. Re-run the ingestion job if the season has moved on.
         </p>
       ) : (
@@ -176,13 +162,13 @@ export default async function TeamPage({
           <input type="hidden" name="team_id" value={team.id} />
           <input type="hidden" name="gameweek_id" value={gameweek.id} />
 
-          <label className="flex items-center gap-3 text-sm">
-            <span className="text-slate-400">Formation</span>
+          <label className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="muted">Formation</span>
             <select
               name="formation"
               defaultValue={lineup?.formation ?? "4-4-2"}
               suppressHydrationWarning
-              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-slate-500"
+              className="select"
             >
               {formations?.map((formation) => (
                 <option key={formation.code} value={formation.code}>
@@ -190,17 +176,15 @@ export default async function TeamPage({
                 </option>
               ))}
             </select>
-            <span className="text-xs text-slate-600">1 GK plus the outfield split above</span>
+            <span className="text-xs dim">1 GK plus the outfield split shown</span>
           </label>
 
           {byPosition.map((group) => (
             <section key={group.position}>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-                {POSITION_LABELS[group.position]}
-              </h2>
-              <ul className="mt-2 divide-y divide-slate-800 rounded-lg border border-slate-800">
+              <h2 className="section-label">{POSITION_LABELS[group.position]}</h2>
+              <ul className="list mt-2">
                 {group.players.map((player) => (
-                  <li key={player.id} className="flex items-center gap-3 px-4 py-2">
+                  <li key={player.id} className="row">
                     <input
                       type="checkbox"
                       name="starter"
@@ -211,11 +195,9 @@ export default async function TeamPage({
                       aria-label={`Start ${player.display_name}`}
                     />
                     <PlayerAvatar src={player.photo_url} name={player.display_name} />
-                    <span className="flex-1 font-medium">{player.display_name}</span>
-                    <span className="text-sm text-slate-500">
-                      {player.clubs?.short_name ?? "—"}
-                    </span>
-                    <label className="flex items-center gap-1 text-xs text-slate-500">
+                    <span className="flex-1 truncate font-medium">{player.display_name}</span>
+                    <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
+                    <label className="flex items-center gap-1 text-xs dim">
                       <input
                         type="radio"
                         name="captain"
@@ -226,7 +208,7 @@ export default async function TeamPage({
                       />
                       C
                     </label>
-                    <label className="flex items-center gap-1 text-xs text-slate-500">
+                    <label className="flex items-center gap-1 text-xs dim">
                       <input
                         type="radio"
                         name="vice"
@@ -240,15 +222,13 @@ export default async function TeamPage({
                   </li>
                 ))}
                 {group.players.length === 0 ? (
-                  <li className="px-4 py-3 text-sm text-slate-600">None on your roster.</li>
+                  <li className="row text-sm dim">None on your roster.</li>
                 ) : null}
               </ul>
             </section>
           ))}
 
-          <button className="rounded-md bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500">
-            Save lineup
-          </button>
+          <button className="btn btn-primary">Save lineup</button>
         </form>
       )}
     </main>

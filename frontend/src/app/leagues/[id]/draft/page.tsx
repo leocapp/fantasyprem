@@ -50,13 +50,6 @@ type ClubOption = { id: string; name: string };
 const PAGE_SIZE = 50;
 const POSITIONS = ["GK", "DEF", "MID", "FWD"] as const;
 
-const POSITION_STYLES: Record<string, string> = {
-  GK: "bg-amber-500/15 text-amber-300",
-  DEF: "bg-sky-500/15 text-sky-300",
-  MID: "bg-emerald-500/15 text-emerald-300",
-  FWD: "bg-rose-500/15 text-rose-300",
-};
-
 export const dynamic = "force-dynamic";
 
 export default async function DraftPage({
@@ -186,44 +179,31 @@ export default async function DraftPage({
   const isComplete = !nextPick;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8 pt-16">
+    <main className="page">
       <DraftRealtime leagueId={league.id} />
 
-      <div className="flex items-baseline justify-between">
-        <div>
-          <Link href={`/leagues/${league.id}`} className="text-sm text-slate-500 hover:text-slate-300">
-            ← {league.name}
-          </Link>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">Draft room</h1>
-        </div>
-        <span className="text-sm text-slate-500">
-          {madePicks.length} of {picks?.length ?? 0} picks
+      <div className="flex items-baseline justify-between gap-4">
+        <h1 className="page-title">Draft room</h1>
+        <span className="numeric text-sm dim">
+          {madePicks.length} / {picks?.length ?? 0} picks
         </span>
       </div>
 
-      {filters.error ? (
-        <p className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
-          {filters.error}
-        </p>
-      ) : null}
+      {filters.error ? <p className="notice notice-error">{filters.error}</p> : null}
 
-      <section
-        className={`rounded-lg border p-5 ${
-          myTurn ? "border-emerald-600 bg-emerald-950/20" : "border-slate-700 bg-slate-900/50"
-        }`}
-      >
+      <section className={`card ${myTurn ? "card-accent" : ""}`}>
         {isComplete ? (
-          <p className="font-medium text-emerald-400">Draft complete.</p>
+          <p className="font-medium" style={{ color: "var(--accent-hover)" }}>
+            Draft complete.
+          </p>
         ) : (
           <>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-              On the clock
-            </h2>
+            <h2 className="section-label">On the clock</h2>
             <p className="mt-1 text-xl font-semibold">
               {onTheClock?.name}
               {myTurn ? " — that's you" : ""}
             </p>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm dim">
               Round {nextPick?.round} · pick {nextPick?.overall_pick}
             </p>
           </>
@@ -233,10 +213,8 @@ export default async function DraftPage({
       {!isComplete ? (
         <section>
           <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Available players
-            </h2>
-            {!myTurn ? <span className="text-xs text-slate-600">Waiting for your turn</span> : null}
+            <h2 className="section-label">Available players</h2>
+            {!myTurn ? <span className="text-xs dim">Waiting for your turn</span> : null}
           </div>
 
           <form className="mt-3 flex flex-wrap gap-2" suppressHydrationWarning>
@@ -245,13 +223,13 @@ export default async function DraftPage({
               defaultValue={search}
               placeholder="Search name"
               suppressHydrationWarning
-              className="min-w-[10rem] flex-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500"
+              className="input min-w-[10rem] flex-1"
             />
             <select
               name="position"
               defaultValue={position ?? ""}
               suppressHydrationWarning
-              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500"
+              className="select"
             >
               <option value="">All positions</option>
               {POSITIONS.map((value) => (
@@ -264,7 +242,7 @@ export default async function DraftPage({
               name="club"
               defaultValue={filters.club ?? ""}
               suppressHydrationWarning
-              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500"
+              className="select"
             >
               <option value="">All clubs</option>
               {clubs?.map((club) => (
@@ -273,41 +251,30 @@ export default async function DraftPage({
                 </option>
               ))}
             </select>
-            <button className="rounded-md border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-slate-400">
-              Filter
-            </button>
+            <button className="btn btn-ghost">Filter</button>
           </form>
 
           <div className="mt-3 flex flex-wrap items-baseline justify-between gap-2 text-sm">
-            <span className="text-slate-500">
+            <span className="dim">
               {totalAvailable} available
               {lastPage > 1 ? ` · page ${page} of ${lastPage}` : ""}
             </span>
-            <span className="flex gap-3 text-xs">
+            <span className="numeric flex gap-3 text-xs">
               {POSITIONS.map((value) => (
-                <span
-                  key={value}
-                  className={positionFull(value) ? "text-slate-600 line-through" : "text-slate-400"}
-                >
+                <span key={value} className={positionFull(value) ? "dim line-through" : "muted"}>
                   {value} {slotsUsed[value]}/{slotLimits[value]}
                 </span>
               ))}
             </span>
           </div>
 
-          <ul className="mt-2 divide-y divide-slate-800 rounded-lg border border-slate-800">
+          <ul className="list mt-2">
             {players?.map((player) => (
-              <li key={player.id} className="flex items-center gap-3 px-4 py-2">
+              <li key={player.id} className="row">
                 <PlayerAvatar src={player.photo_url} name={player.display_name} />
-                <span
-                  className={`w-11 rounded px-1.5 py-0.5 text-center text-xs font-semibold ${
-                    POSITION_STYLES[player.position] ?? "bg-slate-700 text-slate-300"
-                  }`}
-                >
-                  {player.position}
-                </span>
-                <span className="flex-1 font-medium">{player.display_name}</span>
-                <span className="text-sm text-slate-500">{player.clubs?.short_name ?? "—"}</span>
+                <span className={`badge badge-${player.position}`}>{player.position}</span>
+                <span className="flex-1 truncate font-medium">{player.display_name}</span>
+                <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
                 <form action={makePick}>
                   <input type="hidden" name="league_id" value={league.id} />
                   <input type="hidden" name="player_id" value={player.id} />
@@ -319,7 +286,7 @@ export default async function DraftPage({
                         ? `Your ${player.position} slots are full`
                         : undefined
                     }
-                    className="rounded-md bg-emerald-600 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-600"
+                    className="btn btn-primary btn-sm"
                   >
                     Draft
                   </button>
@@ -327,7 +294,7 @@ export default async function DraftPage({
               </li>
             ))}
             {players?.length === 0 ? (
-              <li className="px-4 py-6 text-center text-sm text-slate-500">
+              <li className="row justify-center py-6 text-sm dim">
                 No available players match that.
               </li>
             ) : null}
@@ -336,17 +303,17 @@ export default async function DraftPage({
           {lastPage > 1 ? (
             <div className="mt-3 flex items-center justify-between text-sm">
               {page > 1 ? (
-                <Link href={pageHref(page - 1)} className="text-slate-400 hover:text-slate-200">
+                <Link href={pageHref(page - 1)} className="muted hover:text-[var(--text)]">
                   ← Previous
                 </Link>
               ) : (
                 <span />
               )}
-              <span className="text-xs text-slate-600">
+              <span className="numeric text-xs dim">
                 {page} / {lastPage}
               </span>
               {page < lastPage ? (
-                <Link href={pageHref(page + 1)} className="text-slate-400 hover:text-slate-200">
+                <Link href={pageHref(page + 1)} className="muted hover:text-[var(--text)]">
                   Next →
                 </Link>
               ) : (
@@ -359,40 +326,34 @@ export default async function DraftPage({
 
       <div className="grid gap-6 sm:grid-cols-2">
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+          <h2 className="section-label">
             Your roster ({myRoster.length}/{league.roster_size})
           </h2>
           <ul className="mt-3 flex flex-col gap-1 text-sm">
             {myRoster.map((pick) => (
               <li key={pick.id} className="flex gap-2">
-                <span className="w-9 text-slate-600">{pick.players?.position}</span>
-                <span>{pick.players?.display_name}</span>
+                <span className="w-9 dim">{pick.players?.position}</span>
+                <span className="truncate">{pick.players?.display_name}</span>
               </li>
             ))}
-            {myRoster.length === 0 ? <li className="text-slate-600">No picks yet.</li> : null}
+            {myRoster.length === 0 ? <li className="dim">No picks yet.</li> : null}
           </ul>
         </section>
 
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-            Recent picks
-          </h2>
+          <h2 className="section-label">Recent picks</h2>
           <ul className="mt-3 flex flex-col gap-1 text-sm">
             {madePicks
               .slice(-10)
               .reverse()
               .map((pick) => (
                 <li key={pick.id} className="flex gap-2">
-                  <span className="w-8 font-mono text-xs text-slate-600">
-                    {pick.overall_pick}
-                  </span>
-                  <span className="flex-1">{pick.players?.display_name}</span>
-                  <span className="text-slate-600">
-                    {teamsById.get(pick.fantasy_team_id)?.name}
-                  </span>
+                  <span className="numeric w-8 text-xs dim">{pick.overall_pick}</span>
+                  <span className="flex-1 truncate">{pick.players?.display_name}</span>
+                  <span className="truncate dim">{teamsById.get(pick.fantasy_team_id)?.name}</span>
                 </li>
               ))}
-            {madePicks.length === 0 ? <li className="text-slate-600">Nobody has picked.</li> : null}
+            {madePicks.length === 0 ? <li className="dim">Nobody has picked.</li> : null}
           </ul>
         </section>
       </div>
