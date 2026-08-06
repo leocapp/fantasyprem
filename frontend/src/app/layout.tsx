@@ -5,8 +5,8 @@ import AppNav from "@/components/AppNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FantasyPrem",
-  description: "Fantasy soccer for real-world leagues",
+  title: "FatBoysFantasy",
+  description: "Fantasy Premier League with a snake draft and head-to-head matchups",
 };
 
 export default function RootLayout({
