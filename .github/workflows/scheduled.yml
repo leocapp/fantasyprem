@@ -2,9 +2,20 @@ name: Scheduled ingestion and scoring
 
 on:
   schedule:
-    # Hourly. Cheap enough to run always, and means points appear within an
-    # hour of a match finishing without anyone thinking about it.
+    # All times UTC. GitHub treats scheduled runs as best-effort and drops them
+    # when its shared runners are busy — in practice roughly one in three fires.
+    # These are set more aggressively than the target refresh rate to compensate.
+
+    # Baseline: hourly, every day.
     - cron: "17 * * * *"
+
+    # Match days: every 20 minutes on Saturday and Sunday, when people are
+    # actually watching their scores move.
+    - cron: "*/20 * * * 6,0"
+
+    # Midweek and Friday evening kickoffs, 17:00–23:00 UTC.
+    - cron: "*/30 17-23 * * 1-5"
+
   # Lets you trigger a run by hand from the Actions tab, which is how you'll
   # test it and how you'll recover if a run fails.
   workflow_dispatch:

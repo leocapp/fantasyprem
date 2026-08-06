@@ -71,6 +71,19 @@ redirect allow-list if you want to test sign-in on them.
 
 ## 5. Scheduled jobs (GitHub Actions)
 
+Scheduled runs are **best-effort**. GitHub drops them when its runners are busy,
+so an hourly cron realistically fires every two or three hours. The workflow
+compensates by scheduling more often than the target refresh rate: every 20
+minutes at weekends, every 30 minutes on weekday evenings, hourly otherwise.
+
+A missed run only means slightly stale scores, never wrong ones — every step is
+an upsert, so the next run catches up.
+
+Two things that would silently stop it: GitHub disables scheduled workflows in
+repositories with no commits for 60 days, and schedules only run from the
+default branch.
+
+
 `.github/workflows/scheduled.yml` runs hourly and on demand. It refreshes squads
 and fixtures, ingests match stats, scores every league, and settles trades whose
 veto window has closed.
