@@ -27,6 +27,7 @@ type PlayerRow = {
   availability: string | null;
   news: string | null;
   chance_of_playing: number | null;
+  ep_next: number | null;
   clubs: { short_name: string } | null;
 };
 
@@ -130,7 +131,7 @@ export default async function TeamPage({
       supabase
         .from("roster_entries")
         .select(
-          "player_id, players (id, display_name, position, photo_url, club_id, shirt_number, availability, news, chance_of_playing, clubs (short_name))",
+          "player_id, players (id, display_name, position, photo_url, club_id, shirt_number, availability, news, chance_of_playing, ep_next, clubs (short_name))",
         )
         .eq("fantasy_team_id", team.id)
         .is("dropped_at", null)
@@ -228,6 +229,7 @@ export default async function TeamPage({
       news: player.news,
       chance: player.chance_of_playing,
       fixture: fixtures?.length ? fixtures.join(", ") : "no fixture",
+      projected: player.ep_next,
       lastPoints: last ? Number(last.points) : null,
       lastMinutes: last?.breakdown?.minutes ?? null,
     };

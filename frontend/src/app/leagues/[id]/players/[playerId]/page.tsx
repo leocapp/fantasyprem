@@ -19,10 +19,19 @@ type PlayerRow = {
   availability: string | null;
   news: string | null;
   chance_of_playing: number | null;
+  ep_next: number | null;
+  form: number | null;
+  points_per_game: number | null;
+  xg_per_90: number | null;
+  xa_per_90: number | null;
+  xgi_per_90: number | null;
+  xgc_per_90: number | null;
   clubs: { name: string; short_name: string } | null;
 };
 
 type GameweekRow = { id: string; number: number; status: string };
+
+const MINIMUM_MATCHES = 3;
 
 type ClubRow = { id: string; name: string; short_name: string };
 
@@ -57,6 +66,18 @@ type ScoreRow = {
   gameweek_id: string;
   points: number;
   breakdown: Record<string, number>;
+};
+
+type ExpectationRow = {
+  gameweek_id: string;
+  minutes: number;
+  full_game_probability: number;
+  goals: number;
+  assists: number;
+  clean_sheet_probability: number;
+  goals_conceded: number;
+  saves: number;
+  matches_observed: number;
 };
 
 const STAT_LABELS: [keyof StatRow, string][] = [
@@ -119,7 +140,7 @@ export default async function PlayerDetailPage({
   const { data: player } = await supabase
     .from("players")
     .select(
-      "id, display_name, first_name, last_name, position, photo_url, club_id, availability, news, chance_of_playing, clubs (name, short_name)",
+      "id, display_name, first_name, last_name, position, photo_url, club_id, availability, news, chance_of_playing, ep_next, form, points_per_game, xg_per_90, xa_per_90, xgi_per_90, xgc_per_90, clubs (name, short_name)",
     )
     .eq("id", playerId)
     .maybeSingle<PlayerRow>();
@@ -141,6 +162,61 @@ export default async function PlayerDetailPage({
     .returns<ScoreRow[]>();
 
   const scoreBy = new Map((scores ?? []).map((row) => [row.gameweek_id, row]));
+
+  // Our own projection for upcoming gameweeks, plus the points those
+  // expectations imply under this league's rules.
+  const { data: expectations } = await supabase
+    .from("player_gameweek_expectations")
+    .select(
+      "gameweek_id, minutes, full_game_probability, goals, assists, clean_sheet_probability, goals_conceded, saves, matches_observed",
+    )
+    .eq("player_id", playerId)
+    .returns<ExpectationRow[]>();
+
+  // Which gameweeks are "next" comes from this league's own schedule, not the
+  // calendar. Re-running the ingestion job rewrites gameweek statuses from the
+  // live FPL feed, which would otherwise point this back at gameweek 1 while
+  // the league is on gameweek 5.
+  const { data: scheduled } = await supabase
+    .from("matchups")
+    .select("gameweeks (id, number)")
+    .eq("league_id", id)
+    .eq("status", "scheduled")
+    .returns<{ gameweeks: { id: string; number: number } | null }[]>();
+
+  const nextNumbers = [
+    ...new Set(
+      (scheduled ?? [])
+        .map((row) => row.gameweeks?.number)
+        .filter((value): value is number => value !== undefined),
+    ),
+  ]
+    .sort((a, b) => a - b)
+    .slice(0, 2);
+
+  const upcoming = (gameweeks ?? [])
+    .filter((row) =>
+      nextNumbers.length > 0 ? nextNumbers.includes(row.number) : row.status !== "complete",
+    )
+    .slice(0, 2)
+    .map((gameweek) => ({
+      gameweek,
+      expectation: (expectations ?? []).find((row) => row.gameweek_id === gameweek.id),
+    }))
+    .filter((row) => row.expectation);
+
+  const projectedPoints = await Promise.all(
+    upcoming.map(async ({ gameweek }) => {
+      const { data } = await supabase.rpc("projected_points", {
+        p_league_id: id,
+        p_player_id: playerId,
+        p_gameweek_id: gameweek.id,
+      });
+      return { gameweekId: gameweek.id, points: data as number | null };
+    }),
+  );
+
+  const projectedBy = new Map(projectedPoints.map((row) => [row.gameweekId, row.points]));
 
   const requested = gw ? Number(gw) : undefined;
   const selected =
@@ -212,6 +288,94 @@ export default async function PlayerDetailPage({
           </div>
         </div>
       </div>
+
+      {upcoming.length > 0 ? (
+        <section>
+          <h2 className="section-label">Projection</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {upcoming.map(({ gameweek, expectation }) => {
+              const points = projectedBy.get(gameweek.id);
+              const e = expectation!;
+              const thin = e.matches_observed < MINIMUM_MATCHES;
+
+              return (
+                <div key={gameweek.id} className="card">
+                  <div className="flex items-baseline justify-between">
+                    <h3 className="font-semibold">Gameweek {gameweek.number}</h3>
+                    <span className="numeric text-lg">
+                      {points !== null && points !== undefined ? `${points} pts` : "–"}
+                    </span>
+                  </div>
+
+                  {thin ? (
+                    <p className="mt-2 text-xs dim">
+                      Only {e.matches_observed} match
+                      {e.matches_observed === 1 ? "" : "es"} played — not enough to project from
+                      yet.
+                    </p>
+                  ) : (
+                    <dl className="mt-3 space-y-1 text-sm">
+                      {(
+                        [
+                          ["Expected minutes", e.minutes],
+                          ["Chance of 60+ mins", `${Math.round(e.full_game_probability * 100)}%`],
+                          ["Expected goals", e.goals],
+                          ["Expected assists", e.assists],
+                          [
+                            "Clean sheet chance",
+                            `${Math.round(e.clean_sheet_probability * 100)}%`,
+                          ],
+                          ...(player.position === "GK"
+                            ? ([["Expected saves", e.saves]] as const)
+                            : []),
+                        ] as const
+                      ).map(([label, value]) => (
+                        <div key={label} className="flex justify-between gap-2">
+                          <dt className="dim">{label}</dt>
+                          <dd className="numeric">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="mt-2 text-xs dim">
+            Mine, based on FPL&apos;s: expected minutes and per-90 rates from this player&apos;s own
+            matches, adjusted for fixture difficulty, then scored by this league&apos;s rules.
+            Expected minutes drive most of it — a projection is mostly a guess about whether
+            someone plays.
+          </p>
+        </section>
+      ) : null}
+
+      <section>
+        <h2 className="section-label">Form and projection</h2>
+        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+          {(
+            [
+              ["Projected (FPL)", player.ep_next],
+              ["Form", player.form],
+              ["Points per game", player.points_per_game],
+              ["xG per 90", player.xg_per_90],
+              ["xA per 90", player.xa_per_90],
+              ["xGC per 90", player.xgc_per_90],
+            ] as const
+          ).map(([label, value]) => (
+            <div key={label} className="flex justify-between gap-2">
+              <dt className="dim">{label}</dt>
+              <dd className="numeric">{value ?? "–"}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-2 text-xs dim">
+          Projection and form come from FPL and use FPL&apos;s scoring rules, not this
+          league&apos;s. xG and xA are Opta&apos;s underlying numbers — chances created and taken,
+          independent of whether they went in.
+        </p>
+      </section>
 
       <section>
         <div className="flex items-baseline justify-between">

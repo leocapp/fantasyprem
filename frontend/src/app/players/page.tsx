@@ -15,6 +15,7 @@ type PlayerRow = {
   availability: string | null;
   news: string | null;
   chance_of_playing: number | null;
+  ep_next: number | null;
   clubs: { short_name: string; name: string } | null;
 };
 
@@ -36,6 +37,7 @@ type SearchParams = Promise<{
   page?: string;
   league?: string;
   owner?: string;
+  sort?: string;
 }>;
 
 const PAGE_SIZE = 50;
@@ -100,7 +102,7 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
   let query = supabase
     .from("players")
     .select(
-      "id, display_name, position, shirt_number, photo_url, availability, news, chance_of_playing, clubs (short_name, name)",
+      "id, display_name, position, shirt_number, photo_url, availability, news, chance_of_playing, ep_next, clubs (short_name, name)",
       { count: "exact" },
     )
     .eq("is_active", true);
@@ -116,15 +118,19 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
     if (ownerFilter === "taken") query = query.in("id", ownedIds);
   }
 
+  const sort = params.sort === "projected" ? "projected" : "name";
+
+  query =
+    sort === "projected"
+      ? query.order("ep_next", { ascending: false, nullsFirst: false })
+      : query.order("display_name");
+
   const from = (page - 1) * PAGE_SIZE;
   const {
     data: players,
     count,
     error,
-  } = await query
-    .order("display_name")
-    .range(from, from + PAGE_SIZE - 1)
-    .returns<PlayerRow[]>();
+  } = await query.range(from, from + PAGE_SIZE - 1).returns<PlayerRow[]>();
 
   const total = count ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -136,6 +142,7 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
     if (params.club) next.set("club", params.club);
     if (activeLeagueId) next.set("league", activeLeagueId);
     if (ownerFilter) next.set("owner", ownerFilter);
+    if (sort !== "name") next.set("sort", sort);
     if (target > 1) next.set("page", String(target));
     const value = next.toString();
     return value ? `/players?${value}` : "/players";
@@ -218,6 +225,11 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
           </select>
         ) : null}
 
+        <select name="sort" defaultValue={sort} className="select" suppressHydrationWarning>
+          <option value="name">Name</option>
+          <option value="projected">Projected</option>
+        </select>
+
         <button className="btn btn-ghost">Filter</button>
       </form>
 
@@ -257,6 +269,12 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
                 />
               </span>
               <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
+              <span
+                className="numeric w-10 text-right text-sm"
+                title="FPL's projected points for the next gameweek, on their scoring rules"
+              >
+                {player.ep_next ?? "–"}
+              </span>
               {activeLeagueId ? (
                 <span
                   className={`w-24 truncate text-right text-xs ${owner ? "muted" : "dim"}`}

@@ -15,6 +15,8 @@ export type SquadPlayer = {
   news: string | null;
   chance: number | null;
   fixture: string;
+  /** FPL's expected points for the next gameweek, on FPL's scoring rules. */
+  projected: number | null;
   lastPoints: number | null;
   lastMinutes: number | null;
 };
@@ -357,8 +359,9 @@ export default function PitchLineup({
                     </span>
                     <span className="block truncate text-xs dim">
                       {player.club} · {player.fixture}
+                      {player.projected !== null ? ` · xP ${player.projected}` : ""}
                       {player.lastPoints !== null
-                        ? ` · last: ${player.lastPoints} pts${
+                        ? ` · last ${player.lastPoints} pts${
                             player.lastMinutes !== null ? `, ${player.lastMinutes}'` : ""
                           }`
                         : ""}
@@ -433,10 +436,9 @@ export default function PitchLineup({
                     </span>
                     <span className="block truncate text-xs dim">
                       {player.club} · {player.fixture}
+                      {player.projected !== null ? ` · xP ${player.projected}` : ""}
                       {player.lastPoints !== null
-                        ? ` · last ${player.lastPoints} pts${
-                            player.lastMinutes !== null ? `, ${player.lastMinutes}'` : ""
-                          }`
+                        ? ` · last ${player.lastPoints}`
                         : ""}
                     </span>
                   </span>
@@ -449,6 +451,10 @@ export default function PitchLineup({
           </ul>
           <p className="mt-2 text-xs dim">
             {bench.length} on the bench · they score nothing unless you start them.
+          </p>
+          <p className="mt-1 text-xs dim">
+            xP is FPL&apos;s projection for the coming gameweek, on their scoring rules — a form
+            guide rather than a prediction for this league.
           </p>
         </aside>
       </div>

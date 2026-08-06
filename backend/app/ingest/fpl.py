@@ -39,6 +39,16 @@ def fetch_json(url: str) -> Any:
     return response.json()
 
 
+def number(value: Any) -> float | None:
+    """FPL returns most numbers as strings, and empties as '' or None."""
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def photo_url(element: dict[str, Any]) -> str | None:
     photo = element.get("photo")
     if not photo:
@@ -62,6 +72,11 @@ def club_rows(teams: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "name": team["name"],
             "short_name": team["short_name"],
             "crest_url": CREST_URL.format(code=team["code"]),
+            # Strength ratings drive the fixture adjustment in projections.
+            "strength_attack_home": team.get("strength_attack_home"),
+            "strength_attack_away": team.get("strength_attack_away"),
+            "strength_defence_home": team.get("strength_defence_home"),
+            "strength_defence_away": team.get("strength_defence_away"),
         }
         for team in teams
     ]
@@ -116,6 +131,18 @@ def player_rows(
                 "news": (element.get("news") or "").strip() or None,
                 "news_added_at": element.get("news_added"),
                 "chance_of_playing": element.get("chance_of_playing_next_round"),
+                # FPL's own projection, on FPL's scoring rules — see migration 0023.
+                "ep_next": number(element.get("ep_next")),
+                "form": number(element.get("form")),
+                "points_per_game": number(element.get("points_per_game")),
+                "xg_per_90": number(element.get("expected_goals_per_90")),
+                "xa_per_90": number(element.get("expected_assists_per_90")),
+                "xgi_per_90": number(element.get("expected_goal_involvements_per_90")),
+                "xgc_per_90": number(element.get("expected_goals_conceded_per_90")),
+                # FPL's own valuation, and the best preseason draft signal
+                # available before any matches are played.
+                "price": element.get("now_cost"),
+                "selected_by_percent": number(element.get("selected_by_percent")),
                 "is_active": element.get("status") != "u",
             }
         )
@@ -162,6 +189,8 @@ def fixture_rows(
                 "status": status,
                 "home_score": fixture.get("team_h_score"),
                 "away_score": fixture.get("team_a_score"),
+                "home_difficulty": fixture.get("team_h_difficulty"),
+                "away_difficulty": fixture.get("team_a_difficulty"),
             }
         )
 

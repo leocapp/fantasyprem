@@ -24,6 +24,7 @@ type PlayerRow = {
   availability: string | null;
   news: string | null;
   chance_of_playing: number | null;
+  ep_next: number | null;
   clubs: { short_name: string } | null;
 };
 
@@ -32,6 +33,7 @@ type SearchParams = Promise<{
   position?: string;
   club?: string;
   page?: string;
+  sort?: string;
   error?: string;
   message?: string;
 }>;
@@ -108,7 +110,7 @@ export default async function FreeAgentsPage({
   let query = supabase
     .from("players")
     .select(
-      "id, display_name, position, photo_url, availability, news, chance_of_playing, clubs (short_name)",
+      "id, display_name, position, photo_url, availability, news, chance_of_playing, ep_next, clubs (short_name)",
       { count: "exact" },
     )
     .eq("is_active", true);
@@ -118,9 +120,16 @@ export default async function FreeAgentsPage({
   if (position) query = query.eq("position", position);
   if (filters.club) query = query.eq("club_id", filters.club);
 
+  // Best available first — that's what you're here for.
+  const sort = filters.sort === "name" ? "name" : "projected";
+
+  query =
+    sort === "name"
+      ? query.order("display_name")
+      : query.order("ep_next", { ascending: false, nullsFirst: false });
+
   const offset = (page - 1) * PAGE_SIZE;
   const { data: players, count } = await query
-    .order("display_name")
     .range(offset, offset + PAGE_SIZE - 1)
     .returns<PlayerRow[]>();
 
@@ -132,6 +141,7 @@ export default async function FreeAgentsPage({
     if (search) next.set("q", search);
     if (position) next.set("position", position);
     if (filters.club) next.set("club", filters.club);
+    if (sort !== "projected") next.set("sort", sort);
     if (targetPage > 1) next.set("page", String(targetPage));
     const value = next.toString();
     return value ? `?${value}` : "";
@@ -196,6 +206,10 @@ export default async function FreeAgentsPage({
             </option>
           ))}
         </select>
+        <select name="sort" defaultValue={sort} suppressHydrationWarning className="select">
+          <option value="projected">Projected</option>
+          <option value="name">Name</option>
+        </select>
         <button className="btn btn-ghost">Filter</button>
       </form>
 
@@ -226,6 +240,12 @@ export default async function FreeAgentsPage({
                 />
               </span>
               <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
+              <span
+                className="numeric w-10 text-right text-sm"
+                title="FPL's projected points for the next gameweek, on their scoring rules"
+              >
+                {player.ep_next ?? "–"}
+              </span>
 
               <form action={swapPlayer} className="flex items-center gap-2">
                 <input type="hidden" name="league_id" value={league.id} />

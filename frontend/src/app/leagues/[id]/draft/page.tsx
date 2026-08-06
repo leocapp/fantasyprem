@@ -42,6 +42,10 @@ type PlayerRow = {
   display_name: string;
   position: string;
   photo_url: string | null;
+  ep_next: number | null;
+  form: number | null;
+  price: number | null;
+  selected_by_percent: number | null;
   clubs: { short_name: string } | null;
 };
 
@@ -50,6 +54,7 @@ type SearchParams = Promise<{
   position?: string;
   club?: string;
   page?: string;
+  sort?: string;
   error?: string;
 }>;
 
@@ -125,7 +130,10 @@ export default async function DraftPage({
 
   let available = supabase
     .from("players")
-    .select("id, display_name, position, photo_url, clubs (short_name)", { count: "exact" })
+    .select(
+      "id, display_name, position, photo_url, ep_next, form, price, selected_by_percent, clubs (short_name)",
+      { count: "exact" },
+    )
     .eq("is_active", true);
 
   if (takenIds.length > 0) {
@@ -141,9 +149,30 @@ export default async function DraftPage({
     available = available.eq("club_id", filters.club);
   }
 
+  // Default to draft rank. Drafts happen before a ball is kicked, when form and
+  // projections have nothing to work from — but FPL's price is their own
+  // valuation of a player's season, set in advance and well calibrated.
+  const sort =
+    filters.sort === "name"
+      ? "name"
+      : filters.sort === "form"
+        ? "form"
+        : filters.sort === "owned"
+          ? "owned"
+          : "value";
+
+  if (sort === "name") {
+    available = available.order("display_name");
+  } else if (sort === "form") {
+    available = available.order("form", { ascending: false, nullsFirst: false });
+  } else if (sort === "owned") {
+    available = available.order("selected_by_percent", { ascending: false, nullsFirst: false });
+  } else {
+    available = available.order("price", { ascending: false, nullsFirst: false });
+  }
+
   const offset = (page - 1) * PAGE_SIZE;
   const { data: players, count: availableCount } = await available
-    .order("display_name")
     .range(offset, offset + PAGE_SIZE - 1)
     .returns<PlayerRow[]>();
 
@@ -185,6 +214,7 @@ export default async function DraftPage({
     if (search) next.set("q", search);
     if (position) next.set("position", position);
     if (filters.club) next.set("club", filters.club);
+    if (sort !== "value") next.set("sort", sort);
     if (targetPage > 1) next.set("page", String(targetPage));
     const value = next.toString();
     return value ? `?${value}` : "";
@@ -292,6 +322,12 @@ export default async function DraftPage({
                 </option>
               ))}
             </select>
+            <select name="sort" defaultValue={sort} suppressHydrationWarning className="select">
+              <option value="value">Draft rank</option>
+              <option value="owned">Most owned</option>
+              <option value="form">Form</option>
+              <option value="name">Name</option>
+            </select>
             <button className="btn btn-ghost">Filter</button>
           </form>
 
@@ -299,6 +335,7 @@ export default async function DraftPage({
             <span className="dim">
               {totalAvailable} available
               {lastPage > 1 ? ` · page ${page} of ${lastPage}` : ""}
+              {sort === "value" ? " · ranked by FPL price" : ""}
             </span>
             <span className="numeric flex gap-3 text-xs">
               {POSITIONS.map((value) => (
@@ -326,6 +363,12 @@ export default async function DraftPage({
                   {player.display_name}
                 </Link>
                 <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
+                <span
+                  className="numeric w-12 text-right text-sm"
+                  title="FPL's price — their valuation of this player's season. The best guide available before any matches are played."
+                >
+                  {player.price !== null ? `£${(player.price / 10).toFixed(1)}` : "–"}
+                </span>
                 <form action={makePick}>
                   <input type="hidden" name="league_id" value={league.id} />
                   <input type="hidden" name="player_id" value={player.id} />
