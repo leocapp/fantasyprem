@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import AvailabilityFlag from "@/components/AvailabilityFlag";
+import AvailabilityKey from "@/components/AvailabilityKey";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { createClient } from "@/lib/supabase/server";
 
@@ -10,6 +12,9 @@ type PlayerRow = {
   position: string;
   shirt_number: number | null;
   photo_url: string | null;
+  availability: string | null;
+  news: string | null;
+  chance_of_playing: number | null;
   clubs: { short_name: string; name: string } | null;
 };
 
@@ -94,9 +99,10 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
 
   let query = supabase
     .from("players")
-    .select("id, display_name, position, shirt_number, photo_url, clubs (short_name, name)", {
-      count: "exact",
-    })
+    .select(
+      "id, display_name, position, shirt_number, photo_url, availability, news, chance_of_playing, clubs (short_name, name)",
+      { count: "exact" },
+    )
     .eq("is_active", true);
 
   if (search) {
@@ -217,10 +223,13 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
 
       {error ? <p className="notice notice-error">{error.message}</p> : null}
 
-      <p className="text-sm dim">
-        {total} {total === 1 ? "player" : "players"}
-        {total > PAGE_SIZE ? ` · page ${page} of ${lastPage}` : ""}
-      </p>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <p className="text-sm dim">
+          {total} {total === 1 ? "player" : "players"}
+          {total > PAGE_SIZE ? ` · page ${page} of ${lastPage}` : ""}
+        </p>
+        <AvailabilityKey />
+      </div>
 
       <ul className="list">
         {players?.map((player) => {
@@ -230,7 +239,23 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
             <li key={player.id} className="row">
               <PlayerAvatar src={player.photo_url} name={player.display_name} />
               <span className={`badge badge-${player.position}`}>{player.position}</span>
-              <span className="flex-1 truncate font-medium">{player.display_name}</span>
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                {activeLeagueId ? (
+                  <Link
+                    href={`/leagues/${activeLeagueId}/players/${player.id}`}
+                    className="truncate font-medium hover:underline"
+                  >
+                    {player.display_name}
+                  </Link>
+                ) : (
+                  <span className="truncate font-medium">{player.display_name}</span>
+                )}
+                <AvailabilityFlag
+                  availability={player.availability}
+                  news={player.news}
+                  chance={player.chance_of_playing}
+                />
+              </span>
               <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
               {activeLeagueId ? (
                 <span

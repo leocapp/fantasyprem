@@ -1,7 +1,11 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 import { requireSupabaseEnv } from "./env";
+
+/** Annotated explicitly: the client's overloads don't give TypeScript enough
+ *  to infer this callback's parameter. */
+type CookiesToSet = { name: string; value: string; options?: CookieOptions }[];
 
 /** Supabase client for Server Components, Route Handlers and Server Actions. */
 export async function createClient() {
@@ -13,7 +17,7 @@ export async function createClient() {
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet: CookiesToSet) {
         try {
           cookiesToSet.forEach(({ name, value, options }) => {
             cookieStore.set(name, value, options);

@@ -319,7 +319,12 @@ export default async function DraftPage({
               <li key={player.id} className="row">
                 <PlayerAvatar src={player.photo_url} name={player.display_name} />
                 <span className={`badge badge-${player.position}`}>{player.position}</span>
-                <span className="flex-1 truncate font-medium">{player.display_name}</span>
+                <Link
+                  href={`/leagues/${league.id}/players/${player.id}`}
+                  className="flex-1 truncate font-medium hover:underline"
+                >
+                  {player.display_name}
+                </Link>
                 <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
                 <form action={makePick}>
                   <input type="hidden" name="league_id" value={league.id} />

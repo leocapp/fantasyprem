@@ -9,6 +9,11 @@ played. Never point it at a database with real results in it.
 
 Every rostered player in every league is guaranteed a stat row, so the
 scoring engine and matchup settlement have something to chew on.
+
+NOTE: running `python -m app.ingest.fpl` afterwards will overwrite the gameweek
+statuses and deadlines this script sets, because those come from the live feed.
+Fabricated stats and scores survive; the calendar resets. Re-run this script for
+the gameweek you're working on if that happens.
 """
 
 from __future__ import annotations

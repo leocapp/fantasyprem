@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import AvailabilityFlag from "@/components/AvailabilityFlag";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { createClient } from "@/lib/supabase/server";
 
@@ -14,6 +15,9 @@ type PlayerRow = {
   position: string;
   photo_url: string | null;
   club_id: string | null;
+  availability: string | null;
+  news: string | null;
+  chance_of_playing: number | null;
   clubs: { name: string; short_name: string } | null;
 };
 
@@ -113,7 +117,9 @@ export default async function PlayerDetailPage({
 
   const { data: player } = await supabase
     .from("players")
-    .select("id, display_name, first_name, last_name, position, photo_url, club_id, clubs (name, short_name)")
+    .select(
+      "id, display_name, first_name, last_name, position, photo_url, club_id, availability, news, chance_of_playing, clubs (name, short_name)",
+    )
     .eq("id", playerId)
     .maybeSingle<PlayerRow>();
 
@@ -191,6 +197,17 @@ export default async function PlayerDetailPage({
               {player.first_name ? `${player.first_name} ${player.last_name} · ` : ""}
               {player.position} · {player.clubs?.name ?? "—"}
             </p>
+            {player.availability && player.availability !== "a" ? (
+              <p className="mt-1">
+                <AvailabilityFlag
+                  availability={player.availability}
+                  news={player.news}
+                  chance={player.chance_of_playing}
+                  showLabel
+                />
+                {player.news ? <span className="ml-2 text-xs muted">{player.news}</span> : null}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

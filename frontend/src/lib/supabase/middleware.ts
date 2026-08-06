@@ -1,7 +1,11 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getSupabaseEnv } from "./env";
+
+/** Annotated explicitly: the client's overloads don't give TypeScript enough
+ *  to infer this callback's parameter. */
+type CookiesToSet = { name: string; value: string; options?: CookieOptions }[];
 
 /**
  * Refreshes the Supabase auth session and forwards updated cookies.
@@ -18,7 +22,7 @@ export async function updateSession(request: NextRequest) {
       getAll() {
         return request.cookies.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet: CookiesToSet) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));

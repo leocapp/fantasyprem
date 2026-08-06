@@ -112,6 +112,10 @@ def player_rows(
                 "club_id": club_ids.get(str(element["team"])),
                 "shirt_number": element.get("squad_number"),
                 "photo_url": photo_url(element),
+                "availability": element.get("status"),
+                "news": (element.get("news") or "").strip() or None,
+                "news_added_at": element.get("news_added"),
+                "chance_of_playing": element.get("chance_of_playing_next_round"),
                 "is_active": element.get("status") != "u",
             }
         )

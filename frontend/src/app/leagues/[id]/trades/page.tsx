@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import AvailabilityFlag from "@/components/AvailabilityFlag";
+import AvailabilityKey from "@/components/AvailabilityKey";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import { createClient } from "@/lib/supabase/server";
 
@@ -17,7 +19,14 @@ type TeamRow = {
 type RosterRow = {
   player_id: string;
   fantasy_team_id: string;
-  players: { display_name: string; position: string; clubs: { short_name: string } | null } | null;
+  players: {
+    display_name: string;
+    position: string;
+    availability: string | null;
+    news: string | null;
+    chance_of_playing: number | null;
+    clubs: { short_name: string } | null;
+  } | null;
 };
 
 type TradeRow = {
@@ -81,7 +90,9 @@ export default async function TradesPage({
 
   const { data: rosters } = await supabase
     .from("roster_entries")
-    .select("player_id, fantasy_team_id, players (display_name, position, clubs (short_name))")
+    .select(
+      "player_id, fantasy_team_id, players (display_name, position, availability, news, chance_of_playing, clubs (short_name))",
+    )
     .eq("league_id", id)
     .is("dropped_at", null)
     .returns<RosterRow[]>();
@@ -184,6 +195,8 @@ export default async function TradesPage({
               <button className="btn btn-ghost">Load squads</button>
             </form>
 
+            {partner ? <AvailabilityKey className="mt-3" /> : null}
+
             {partner ? (
               <form action={proposeTrade} className="mt-4 flex flex-col gap-4">
                 <input type="hidden" name="league_id" value={league.id} />
@@ -205,8 +218,13 @@ export default async function TradesPage({
                           <span className={`badge badge-${row.players?.position}`}>
                             {row.players?.position}
                           </span>
-                          <span className="flex-1 truncate text-sm">
-                            {row.players?.display_name}
+                          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
+                            <span className="truncate">{row.players?.display_name}</span>
+                            <AvailabilityFlag
+                              availability={row.players?.availability}
+                              news={row.players?.news}
+                              chance={row.players?.chance_of_playing}
+                            />
                           </span>
                           <span className="text-xs dim">{row.players?.clubs?.short_name}</span>
                         </li>
@@ -229,8 +247,13 @@ export default async function TradesPage({
                           <span className={`badge badge-${row.players?.position}`}>
                             {row.players?.position}
                           </span>
-                          <span className="flex-1 truncate text-sm">
-                            {row.players?.display_name}
+                          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
+                            <span className="truncate">{row.players?.display_name}</span>
+                            <AvailabilityFlag
+                              availability={row.players?.availability}
+                              news={row.players?.news}
+                              chance={row.players?.chance_of_playing}
+                            />
                           </span>
                           <span className="text-xs dim">{row.players?.clubs?.short_name}</span>
                         </li>
