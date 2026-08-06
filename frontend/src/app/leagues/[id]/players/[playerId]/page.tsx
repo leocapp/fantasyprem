@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import AvailabilityFlag from "@/components/AvailabilityFlag";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import { formatDateTime } from "@/lib/datetime";
 import { createClient } from "@/lib/supabase/server";
 
 type LeagueRow = { id: string; name: string; season_id: string };
@@ -242,12 +243,8 @@ export default async function PlayerDetailPage({
                     <span className="flex-1 truncate text-sm">{away?.name ?? "—"}</span>
                   </div>
                   <p className="text-center text-xs dim">
-                    {isHome ? "home" : "away"} ·{" "}
-                    {new Date(fixture.kickoff_at).toLocaleString("en-GB", {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}{" "}
-                    · {fixture.status}
+                    {isHome ? "home" : "away"} · {formatDateTime(fixture.kickoff_at)} ·{" "}
+                    {fixture.status}
                   </p>
 
                   {stat ? (

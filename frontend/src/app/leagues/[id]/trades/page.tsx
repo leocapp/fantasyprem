@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import AvailabilityFlag from "@/components/AvailabilityFlag";
 import AvailabilityKey from "@/components/AvailabilityKey";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
+import { formatDateTime } from "@/lib/datetime";
 import { createClient } from "@/lib/supabase/server";
 
 import { cancelTrade, proposeTrade, respondToTrade, vetoTrade } from "./actions";
@@ -312,12 +313,7 @@ export default async function TradesPage({
                     {trade.status === "accepted" ? (
                       <p className="mt-2 text-xs dim">
                         Settles{" "}
-                        {trade.veto_deadline
-                          ? new Date(trade.veto_deadline).toLocaleString("en-GB", {
-                              dateStyle: "medium",
-                              timeStyle: "short",
-                            })
-                          : "soon"}
+                        {trade.veto_deadline ? formatDateTime(trade.veto_deadline) : "soon"}
                         {needed ? ` · ${vetoes} of ${needed} vetoes needed to block` : ""}
                       </p>
                     ) : null}

@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import AvailabilityKey from "@/components/AvailabilityKey";
+import { formatDeadline } from "@/lib/datetime";
 import { createClient } from "@/lib/supabase/server";
 
 import PitchLineup, { type Formation, type SquadPlayer } from "./PitchLineup";
@@ -270,13 +271,7 @@ export default async function TeamPage({
             gameweekNumber={gameweek.number}
             teamName={team.name}
             leagueId={league.id}
-            deadlineLabel={new Date(gameweek.deadline_at).toLocaleString("en-GB", {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            deadlineLabel={formatDeadline(gameweek.deadline_at)}
           />
         </form>
       )}

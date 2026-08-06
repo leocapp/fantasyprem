@@ -50,7 +50,9 @@ Import the GitHub repo, then:
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
   - `NEXT_PUBLIC_SITE_URL` — your production URL, used as the OAuth redirect
     fallback
-  - `TZ=Europe/London` — see Timezones below
+
+Vercel reserves `TZ`, so the timezone is set in code instead — see
+`src/lib/datetime.ts`.
 
 Do **not** add the service role key. It bypasses RLS and nothing in the frontend
 needs it.
