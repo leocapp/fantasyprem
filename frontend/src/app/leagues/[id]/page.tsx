@@ -77,35 +77,45 @@ export default async function LeaguePage({
 
   if (!league) notFound();
 
-  const { data: teams } = await supabase
-    .from("fantasy_teams")
-    .select(
-      "id, name, owner_id, draft_position, created_at, profiles (display_name, username, avatar_url)",
-    )
-    .eq("league_id", id)
-    .order("draft_position", { nullsFirst: false })
-    .order("created_at")
-    .returns<TeamRow[]>();
+  // Independent queries, so they go out together. Run sequentially these were
+  // four round trips to the database; now they're one.
+  const [{ data: teams }, { data: standings }, { data: allMatchups }, { data: grant }] =
+    await Promise.all([
+      supabase
+        .from("fantasy_teams")
+        .select(
+          "id, name, owner_id, draft_position, created_at, profiles (display_name, username, avatar_url)",
+        )
+        .eq("league_id", id)
+        .order("draft_position", { nullsFirst: false })
+        .order("created_at")
+        .returns<TeamRow[]>(),
 
-  const { data: standings } =
-    league.status === "setup"
-      ? { data: null }
-      : await supabase
-          .from("league_standings")
-          .select("team_id, games_played, wins, losses, draws, points_for, points_against")
-          .eq("league_id", id)
-          .returns<StandingRow[]>();
+      league.status === "setup"
+        ? Promise.resolve({ data: null })
+        : supabase
+            .from("league_standings")
+            .select("team_id, games_played, wins, losses, draws, points_for, points_against")
+            .eq("league_id", id)
+            .returns<StandingRow[]>(),
 
-  const { data: allMatchups } =
-    league.status === "setup"
-      ? { data: null }
-      : await supabase
-          .from("matchups")
-          .select(
-            "id, home_team_id, away_team_id, home_points, away_points, status, gameweeks (number)",
-          )
-          .eq("league_id", id)
-          .returns<MatchupRow[]>();
+      league.status === "setup"
+        ? Promise.resolve({ data: null })
+        : supabase
+            .from("matchups")
+            .select(
+              "id, home_team_id, away_team_id, home_points, away_points, status, gameweeks (number)",
+            )
+            .eq("league_id", id)
+            .returns<MatchupRow[]>(),
+
+      supabase
+        .from("league_commissioners")
+        .select("profile_id")
+        .eq("league_id", id)
+        .eq("profile_id", user.id)
+        .maybeSingle(),
+    ]);
 
   const teamName = new Map((teams ?? []).map((team) => [team.id, team.name]));
   const managerOf = new Map(
@@ -137,13 +147,6 @@ export default async function LeaguePage({
 
   // Co-commissioners have every commissioner power here, so the check can't
   // just compare against the league's owner.
-  const { data: grant } = await supabase
-    .from("league_commissioners")
-    .select("profile_id")
-    .eq("league_id", id)
-    .eq("profile_id", user.id)
-    .maybeSingle();
-
   const isCommissioner = league.commissioner_id === user.id || Boolean(grant);
   const slotsLeft = league.max_teams - (teams?.length ?? 0);
   const inSetup = league.status === "setup";

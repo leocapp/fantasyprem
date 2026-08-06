@@ -109,46 +109,50 @@ export default async function MatchupPage({
     (value): value is string => Boolean(value),
   );
 
-  const { data: teams } = await supabase
-    .from("fantasy_teams")
-    .select("id, name, profiles (username, avatar_url)")
-    .in("id", teamIds)
-    .returns<TeamRow[]>();
+  const [{ data: teams }, { data: lineups }] = await Promise.all([
+    supabase
+      .from("fantasy_teams")
+      .select("id, name, profiles (username, avatar_url)")
+      .in("id", teamIds)
+      .returns<TeamRow[]>(),
 
-  const { data: lineups } = await supabase
-    .from("lineups")
-    .select(
-      "id, fantasy_team_id, formation, carried_forward, lineup_players (player_id, role, is_captain, is_vice_captain, players (display_name, position, photo_url, clubs (short_name)))",
-    )
-    .eq("gameweek_id", matchup.gameweek_id)
-    .in("fantasy_team_id", teamIds)
-    .returns<LineupRow[]>();
+    supabase
+      .from("lineups")
+      .select(
+        "id, fantasy_team_id, formation, carried_forward, lineup_players (player_id, role, is_captain, is_vice_captain, players (display_name, position, photo_url, clubs (short_name)))",
+      )
+      .eq("gameweek_id", matchup.gameweek_id)
+      .in("fantasy_team_id", teamIds)
+      .returns<LineupRow[]>(),
+  ]);
 
   const playerIds = (lineups ?? []).flatMap((lineup) =>
     lineup.lineup_players.filter((row) => row.role === "starter").map((row) => row.player_id),
   );
 
-  const { data: scores } = playerIds.length
-    ? await supabase
-        .from("player_gameweek_scores")
-        .select("player_id, points")
-        .eq("league_id", id)
-        .eq("gameweek_id", matchup.gameweek_id)
-        .in("player_id", playerIds)
-        .returns<ScoreRow[]>()
-    : { data: [] };
+  const [{ data: scores }, { data: stats }] = await Promise.all([
+    playerIds.length
+      ? supabase
+          .from("player_gameweek_scores")
+          .select("player_id, points")
+          .eq("league_id", id)
+          .eq("gameweek_id", matchup.gameweek_id)
+          .in("player_id", playerIds)
+          .returns<ScoreRow[]>()
+      : Promise.resolve({ data: [] as ScoreRow[] }),
 
-  // !inner keeps only stats rows whose fixture is in this gameweek.
-  const { data: stats } = playerIds.length
-    ? await supabase
-        .from("player_match_stats")
-        .select(
-          "player_id, minutes, goals, assists, clean_sheet, goals_conceded, saves, yellow_cards, red_cards, bonus, fixtures!inner(gameweek_id)",
-        )
-        .eq("fixtures.gameweek_id", matchup.gameweek_id)
-        .in("player_id", playerIds)
-        .returns<StatRow[]>()
-    : { data: [] };
+    // !inner keeps only stats rows whose fixture is in this gameweek.
+    playerIds.length
+      ? supabase
+          .from("player_match_stats")
+          .select(
+            "player_id, minutes, goals, assists, clean_sheet, goals_conceded, saves, yellow_cards, red_cards, bonus, fixtures!inner(gameweek_id)",
+          )
+          .eq("fixtures.gameweek_id", matchup.gameweek_id)
+          .in("player_id", playerIds)
+          .returns<StatRow[]>()
+      : Promise.resolve({ data: [] as StatRow[] }),
+  ]);
 
   const pointsBy = new Map((scores ?? []).map((row) => [row.player_id, row.points]));
   const statsBy = new Map((stats ?? []).map((row) => [row.player_id, row]));

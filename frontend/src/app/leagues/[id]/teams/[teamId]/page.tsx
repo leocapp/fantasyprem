@@ -90,28 +90,32 @@ export default async function TeamDetailPage({
 
   const nameBy = new Map((teams ?? []).map((row) => [row.id, row.name]));
 
-  const { data: standings } = await supabase
-    .from("league_standings")
-    .select("team_id, games_played, wins, losses, draws, points_for, points_against")
-    .eq("league_id", id)
-    .eq("team_id", teamId)
-    .maybeSingle<StandingRow>();
+  const [{ data: standings }, { data: matchups }, { data: roster }] = await Promise.all([
+    supabase
+      .from("league_standings")
+      .select("team_id, games_played, wins, losses, draws, points_for, points_against")
+      .eq("league_id", id)
+      .eq("team_id", teamId)
+      .maybeSingle<StandingRow>(),
 
-  const { data: matchups } = await supabase
-    .from("matchups")
-    .select(
-      "id, home_team_id, away_team_id, home_points, away_points, status, gameweeks (number)",
-    )
-    .eq("league_id", id)
-    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
-    .returns<MatchupRow[]>();
+    supabase
+      .from("matchups")
+      .select(
+        "id, home_team_id, away_team_id, home_points, away_points, status, gameweeks (number)",
+      )
+      .eq("league_id", id)
+      .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+      .returns<MatchupRow[]>(),
 
-  const { data: roster } = await supabase
-    .from("roster_entries")
-    .select("player_id, acquired_via, players (display_name, position, photo_url, clubs (short_name))")
-    .eq("fantasy_team_id", teamId)
-    .is("dropped_at", null)
-    .returns<RosterRow[]>();
+    supabase
+      .from("roster_entries")
+      .select(
+        "player_id, acquired_via, players (display_name, position, photo_url, clubs (short_name))",
+      )
+      .eq("fantasy_team_id", teamId)
+      .is("dropped_at", null)
+      .returns<RosterRow[]>(),
+  ]);
 
   const schedule = (matchups ?? [])
     .slice()

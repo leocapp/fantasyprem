@@ -123,44 +123,49 @@ export default async function TeamPage({
 
   const gameweek = scheduled[0] ?? byDeadline;
 
-  const { data: roster } = await supabase
-    .from("roster_entries")
-    .select(
-      "player_id, players (id, display_name, position, photo_url, club_id, shirt_number, availability, news, chance_of_playing, clubs (short_name))",
-    )
-    .eq("fantasy_team_id", team.id)
-    .is("dropped_at", null)
-    .returns<RosterRow[]>();
-
-  const { data: formations } = await supabase
-    .from("formations")
-    .select("code, defenders, midfielders, forwards")
-    .order("sort_order")
-    .returns<Formation[]>();
-
-  const { data: lineup } = gameweek
-    ? await supabase
-        .from("lineups")
-        .select("id, formation, lineup_players (player_id, role, is_captain, is_vice_captain)")
+  // Everything below depends only on team and gameweek, so it goes out in one
+  // batch rather than six sequential round trips.
+  const [{ data: roster }, { data: formations }, { data: lineup }, { data: fixtures }, { data: clubs }] =
+    await Promise.all([
+      supabase
+        .from("roster_entries")
+        .select(
+          "player_id, players (id, display_name, position, photo_url, club_id, shirt_number, availability, news, chance_of_playing, clubs (short_name))",
+        )
         .eq("fantasy_team_id", team.id)
-        .eq("gameweek_id", gameweek.id)
-        .maybeSingle<LineupRow>()
-    : { data: null };
+        .is("dropped_at", null)
+        .returns<RosterRow[]>(),
 
-  // Who each club plays this gameweek, so managers can see the fixture without
-  // leaving the page.
-  const { data: fixtures } = gameweek
-    ? await supabase
-        .from("fixtures")
-        .select("home_club_id, away_club_id, kickoff_at")
-        .eq("gameweek_id", gameweek.id)
-        .returns<FixtureRow[]>()
-    : { data: [] };
+      supabase
+        .from("formations")
+        .select("code, defenders, midfielders, forwards")
+        .order("sort_order")
+        .returns<Formation[]>(),
 
-  const { data: clubs } = await supabase
-    .from("clubs")
-    .select("id, short_name")
-    .returns<{ id: string; short_name: string }[]>();
+      gameweek
+        ? supabase
+            .from("lineups")
+            .select("id, formation, lineup_players (player_id, role, is_captain, is_vice_captain)")
+            .eq("fantasy_team_id", team.id)
+            .eq("gameweek_id", gameweek.id)
+            .maybeSingle<LineupRow>()
+        : Promise.resolve({ data: null }),
+
+      // Who each club plays this gameweek, so managers see the fixture without
+      // leaving the page.
+      gameweek
+        ? supabase
+            .from("fixtures")
+            .select("home_club_id, away_club_id, kickoff_at")
+            .eq("gameweek_id", gameweek.id)
+            .returns<FixtureRow[]>()
+        : Promise.resolve({ data: [] as FixtureRow[] }),
+
+      supabase
+        .from("clubs")
+        .select("id, short_name")
+        .returns<{ id: string; short_name: string }[]>(),
+    ]);
 
   const clubName = new Map((clubs ?? []).map((club) => [club.id, club.short_name]));
 
