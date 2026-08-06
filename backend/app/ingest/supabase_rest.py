@@ -21,6 +21,22 @@ def _chunks(rows: Sequence[dict[str, Any]], size: int) -> Iterator[Sequence[dict
 
 class SupabaseRest:
     def __init__(self, url: str, service_role_key: str, timeout: float = 60.0) -> None:
+        # Caught here because the alternative is a wall of httpx internals
+        # complaining about a missing protocol. The usual cause is pasting a
+        # whole "NAME=value" line into an environment variable or secret.
+        if not url.startswith("http://") and not url.startswith("https://"):
+            raise ValueError(
+                f"SUPABASE_URL must start with https:// — got {url!r}. "
+                "If this looks like 'SUPABASE_URL=https://...', the variable "
+                "name was included in the value."
+            )
+
+        if service_role_key.startswith("SUPABASE_"):
+            raise ValueError(
+                "SUPABASE_SERVICE_ROLE_KEY looks like it includes the variable "
+                "name. It should start with 'eyJ'."
+            )
+
         self._client = httpx.Client(
             base_url=f"{url.rstrip('/')}/rest/v1",
             headers={
