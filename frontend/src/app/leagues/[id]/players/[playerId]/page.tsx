@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import AvailabilityFlag from "@/components/AvailabilityFlag";
+import BackLink from "@/components/BackLink";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { formatDateTime } from "@/lib/datetime";
 import { createClient } from "@/lib/supabase/server";
@@ -263,9 +264,7 @@ export default async function PlayerDetailPage({
   return (
     <main className="page page-narrow">
       <div>
-        <Link href={`/leagues/${league.id}`} className="text-sm dim hover:text-[var(--text)]">
-          ← {league.name}
-        </Link>
+        <BackLink fallbackHref={`/leagues/${league.id}`} fallbackLabel={league.name} />
         <div className="mt-2 flex items-center gap-3">
           <PlayerAvatar src={player.photo_url} name={player.display_name} />
           <div>
@@ -467,6 +466,11 @@ export default async function PlayerDetailPage({
               <li key={gameweek.id}>
                 <Link
                   href={`/leagues/${league.id}/players/${player.id}?gw=${gameweek.number}`}
+                  // Switching gameweek changes what's shown, it isn't a new
+                  // destination — so it replaces the history entry rather than
+                  // stacking one. Otherwise Back walks through every gameweek
+                  // you looked at before leaving the page.
+                  replace
                   className={`flex w-14 flex-col items-center rounded-md border px-1 py-1.5 text-xs transition-colors ${
                     active
                       ? "border-[var(--accent)] bg-[var(--accent-soft)]"

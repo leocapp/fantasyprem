@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import BackLink from "@/components/BackLink";
 import ManagerAvatar from "@/components/ManagerAvatar";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { createClient } from "@/lib/supabase/server";
@@ -269,9 +270,7 @@ export default async function MatchupPage({
   return (
     <main className="page">
       <div>
-        <Link href={`/leagues/${id}`} className="text-sm dim hover:text-[var(--text)]">
-          ← Back to league
-        </Link>
+        <BackLink fallbackHref={`/leagues/${id}`} fallbackLabel="league" />
         <h1 className="page-title mt-1">Gameweek {matchup.gameweeks?.number}</h1>
         <p className="page-subtitle">
           {played ? `Final · ${matchup.home_points} – ${matchup.away_points}` : "Not yet played"}

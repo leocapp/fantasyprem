@@ -199,7 +199,11 @@ export default async function TradesPage({
             {partner ? <AvailabilityKey className="mt-3" /> : null}
 
             {partner ? (
-              <form action={proposeTrade} className="mt-4 flex flex-col gap-4">
+              <form
+                action={proposeTrade}
+                className="mt-4 flex flex-col gap-4"
+                suppressHydrationWarning
+              >
                 <input type="hidden" name="league_id" value={league.id} />
                 <input type="hidden" name="receiver_team_id" value={partner.id} />
 

@@ -369,7 +369,7 @@ export default async function DraftPage({
                 >
                   {player.price !== null ? `£${(player.price / 10).toFixed(1)}` : "–"}
                 </span>
-                <form action={makePick}>
+                <form action={makePick} suppressHydrationWarning>
                   <input type="hidden" name="league_id" value={league.id} />
                   <input type="hidden" name="player_id" value={player.id} />
                   <input type="hidden" name="return_query" value={returnQuery} />

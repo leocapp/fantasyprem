@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import BackLink from "@/components/BackLink";
 import ManagerAvatar from "@/components/ManagerAvatar";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { createClient } from "@/lib/supabase/server";
@@ -133,9 +134,7 @@ export default async function TeamDetailPage({
   return (
     <main className="page">
       <div>
-        <Link href={`/leagues/${league.id}`} className="text-sm dim hover:text-[var(--text)]">
-          ← {league.name}
-        </Link>
+        <BackLink fallbackHref={`/leagues/${league.id}`} fallbackLabel={league.name} />
         <div className="mt-2 flex items-center gap-3">
           <ManagerAvatar
             src={team.profiles?.avatar_url}

@@ -247,7 +247,9 @@ export default async function FreeAgentsPage({
                 {player.ep_next ?? "–"}
               </span>
 
-              <form action={swapPlayer} className="flex items-center gap-2">
+              {/* suppressHydrationWarning: browser autofill stamps signature
+                  attributes onto any form it thinks it could fill. */}
+              <form action={swapPlayer} className="flex items-center gap-2" suppressHydrationWarning>
                 <input type="hidden" name="league_id" value={league.id} />
                 <input type="hidden" name="add_player_id" value={player.id} />
                 <input type="hidden" name="return_query" value={returnQuery} />
