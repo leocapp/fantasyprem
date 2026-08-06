@@ -21,14 +21,20 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # Two overlapping runs would fight over the same upserts.
+  # Two overlapping runs would fight over the same upserts, so only one at a
+  # time. Newer runs cancel older ones rather than queueing behind them: this
+  # job refreshes state rather than accumulating it, so the most recent run is
+  # always the one worth having, and a run stuck waiting for a runner would
+  # otherwise block every run after it.
   group: scheduled-ingestion
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The work itself takes well under a minute; anything longer means it's
+    # waiting for a runner, and failing fast frees the queue for the next run.
+    timeout-minutes: 8
 
     steps:
       - uses: actions/checkout@v4
