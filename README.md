@@ -1,218 +1,135 @@
-# FantasyPrem
+# FatBoysFantasy
 
-Fantasy soccer for real-world leagues — draft and manage a roster of real players, score points from real match performance.
+Fantasy Premier League with a snake draft and weekly head-to-head matchups.
+Draft a squad of real players, set a starting XI each gameweek, and score points
+from what actually happens on the pitch.
 
-This repo is currently a **skeleton**: both services run and talk to each other, but no app features exist yet.
+Live at **[fatboysfantasy.com](https://fatboysfantasy.com)**.
+
+## What it does
+
+- **Snake draft** — live draft room, turn order enforced by the database, squad
+  composition rules checked as you pick
+- **Weekly lineups** — pick an XI on a pitch view with formations, captain and
+  vice-captain, injury flags and fixture context
+- **Real scoring** — per-player points from actual match performances, using
+  each league's own configurable scoring rules
+- **Head-to-head** — a full season schedule, standings, and per-matchup detail
+  showing every player's contribution
+- **Squad management** — free agent swaps and multi-player trades with a league
+  veto window
+- **League life** — chat, manager profiles with avatars, commissioner settings
 
 ## Stack
 
-| Piece    | Tech                                            |
-| -------- | ----------------------------------------------- |
-| Frontend | Next.js (App Router, TypeScript, Tailwind CSS)  |
-| Backend  | FastAPI (Python)                                |
-| Data     | Supabase — Postgres + Auth                      |
+| Piece | Tech |
+| --- | --- |
+| Frontend | Next.js (App Router, TypeScript, Tailwind) on Vercel |
+| Data & auth | Supabase — Postgres, Row Level Security, Realtime, Storage |
+| Scheduled jobs | Python on GitHub Actions |
 
-Auth split: the frontend owns login and session cookies via `@supabase/ssr`; the backend verifies the Supabase JWT on protected routes.
+**There is no backend server in production.** Every operation — drafting,
+trades, scoring, lineups — is a Postgres function called from Next.js and
+protected by RLS. The `backend/` directory holds the ingestion and scoring
+scripts, which run on a schedule rather than behind an HTTP server.
+
+## How it fits together
+
+The database is the source of truth for rules, not the app. Turn order, squad
+minimums, trade legality, scoring and deadlines are all enforced in Postgres, so
+a stale browser tab or a hand-crafted request can't produce an illegal state.
+The UI's job is to make the legal moves obvious.
+
+Three consequences worth knowing:
+
+- **Changing scoring rules is data, not code** — each league gets its own copy
+  of the rules at creation, editable from league settings.
+- **RLS is the authorisation layer.** Chat, for instance, has no server function
+  at all: the insert policy pins the author to `auth.uid()`, so the browser can
+  write directly.
+- **Anything crossing an RLS boundary is a `SECURITY DEFINER` function** that
+  does its own checks — joining a league by code, for example, since you can't
+  see a league you haven't joined.
+
+Schema design notes are in [`supabase/README.md`](supabase/README.md).
 
 ## Layout
 
 ```
 FantasyPrem/
-├── frontend/                   # Next.js app
-│   ├── src/
-│   │   ├── app/                # App Router (layout, page, globals.css)
-│   │   ├── lib/
-│   │   │   ├── api.ts          # typed fetch wrapper for the FastAPI backend
-│   │   │   └── supabase/       # browser / server / middleware clients
-│   │   └── middleware.ts       # refreshes the Supabase session
-│   └── .env.local.example
-├── backend/                    # FastAPI app
-│   ├── app/
-│   │   ├── main.py             # app factory, CORS, router registration
-│   │   ├── config.py           # settings from env / .env
-│   │   ├── auth.py             # Supabase JWT verification dependency
-│   │   └── routers/            # health.py, hello.py
-│   ├── tests/
-│   ├── requirements.txt
-│   └── .env.example
-├── supabase/
-│   ├── migrations/             # schema, applied in numerical order
-│   └── README.md               # schema design notes
-└── README.md
+├── frontend/                 # Next.js app (deployed to Vercel)
+│   └── src/
+│       ├── app/              # routes: leagues, draft, team, trades, chat…
+│       ├── components/       # shared UI
+│       └── lib/              # Supabase clients, date helpers
+├── backend/                  # Python data jobs (not deployed as a server)
+│   └── app/ingest/
+│       ├── fpl.py            # clubs, players, gameweeks, fixtures
+│       ├── stats.py          # match stats, then scores every league
+│       ├── synthetic.py      # fabricated stats for off-season testing
+│       └── cron.py           # all of the above, for the scheduler
+├── supabase/migrations/      # schema, applied in numerical order
+└── .github/workflows/        # hourly ingestion and scoring
 ```
 
-## Picking it up again
+## Running it locally
 
-Day to day you only need the frontend. Supabase is hosted, and the app no longer
-calls the local API at runtime.
+Day to day you only need the frontend — Supabase is hosted.
 
 ```bash
-cd ~/FantasyPrem/frontend && npm run dev
+cd frontend && npm install && npm run dev
 ```
 
-Then open http://localhost:3000.
+Open http://localhost:3000. Requires `frontend/.env.local`:
 
-The Python side is only for data jobs — simulating a gameweek, pulling fresh
-squads, scoring:
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+Before pushing, always:
 
 ```bash
-cd ~/FantasyPrem/backend && source .venv/bin/activate
-python -m app.ingest.synthetic 3   # fabricate and score one gameweek
-python -m app.ingest.cron          # refresh data, score, settle trades
+npm run build
 ```
 
-`uvicorn` is only needed if you're working on the FastAPI app itself.
+The dev server tolerates type and lint errors that a production build rejects.
 
-## Prerequisites
+## Data jobs
 
-- Node.js 20+ and npm
-- Python 3.11+
-- A Supabase project (free tier is fine) — optional to get the skeleton running
-
-## 1. Supabase setup
-
-1. Create a project at [supabase.com](https://supabase.com).
-2. Go to **Project Settings → API** and copy:
-   - the **Project URL**
-   - the **anon / publishable** key (safe for the browser)
-   - the **service role** key (server-side only — never expose it to the browser)
-3. Paste these into the env files below.
-
-You can skip this for now. Both services boot without Supabase configured; only auth-dependent routes will be unavailable.
-
-Then apply the schema: paste each file in `supabase/migrations/` into the Dashboard's **SQL Editor**, in numerical order. See [`supabase/README.md`](supabase/README.md) for what the tables do and why.
-
-## 2. Backend — FastAPI
+Python 3.12, with `backend/.env` holding `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` (server-side only — it bypasses RLS).
 
 ```bash
 cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-
-pip install -r requirements.txt    # or requirements-dev.txt for pytest + ruff
-cp .env.example .env               # then fill in your Supabase values
-
-uvicorn app.main:app --reload --port 8000
+python -m app.ingest.cron        # everything, as the scheduler runs it
+python -m app.ingest.fpl         # refresh squads and fixtures
+python -m app.ingest.stats       # match stats and scoring
+python -m app.ingest.synthetic 3 # fabricate one gameweek (development only)
 ```
 
-Runs at **http://localhost:8000**.
+In production these run hourly via GitHub Actions, so points appear within an
+hour of a match finishing.
 
-| Endpoint     | Notes                                    |
-| ------------ | ---------------------------------------- |
-| `/health`    | Liveness + whether Supabase is configured |
-| `/api/hello` | Hello world                              |
-| `/api/me`    | Protected — requires a Supabase JWT      |
-| `/docs`      | Interactive OpenAPI docs                 |
+Data comes from the Fantasy Premier League API, which is public but unofficial
+and undocumented.
 
-Quick check:
+## Deploying
 
-```bash
-curl http://localhost:8000/api/hello
-```
+Push to `main` and Vercel builds and deploys. Migrations are applied by hand
+through the Supabase SQL editor, in numerical order.
 
-Tests:
+Full setup and the pre-launch checklist are in [`DEPLOY.md`](DEPLOY.md).
 
-```bash
-pip install -r requirements-dev.txt
-pytest
-```
+## Known gaps
 
-## 3. Frontend — Next.js
-
-In a second terminal:
-
-```bash
-cd frontend
-
-npm install
-cp .env.local.example .env.local   # then fill in your Supabase values
-
-npm run dev
-```
-
-Runs at **http://localhost:3000**. The home page calls `/api/hello` on the backend and reports whether the connection succeeded — that's the end-to-end check.
-
-Other scripts: `npm run build`, `npm run lint`, `npm run format`.
-
-## Environment variables
-
-**`frontend/.env.local`** — anything prefixed `NEXT_PUBLIC_` is exposed to the browser.
-
-| Variable                        | Purpose                        |
-| ------------------------------- | ------------------------------ |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL           |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon / publishable key         |
-| `NEXT_PUBLIC_API_BASE_URL`      | FastAPI base URL               |
-
-**`backend/.env`** — server-side only.
-
-| Variable                    | Purpose                                                     |
-| --------------------------- | ----------------------------------------------------------- |
-| `ENVIRONMENT`               | `development` / `production`                                 |
-| `CORS_ORIGINS`              | Comma-separated allowed origins                              |
-| `SUPABASE_URL`              | Used to fetch the JWKS for token verification                |
-| `SUPABASE_SERVICE_ROLE_KEY` | Privileged key — bypasses RLS, never send to the browser     |
-| `SUPABASE_JWT_SECRET`       | Only for projects still on the legacy HS256 secret           |
-| `DATABASE_URL`              | Postgres connection string (unused so far)                   |
-
-## Loading Premier League data
-
-The ingestion job pulls clubs, gameweeks, players and fixtures from the Fantasy Premier League API into Supabase.
-
-It writes with the **service role key**, so add that to `backend/.env` first (Dashboard → Project Settings → API → `service_role`):
-
-```
-SUPABASE_SERVICE_ROLE_KEY=eyJ...
-```
-
-Then, with the backend venv active:
-
-```bash
-cd ~/FantasyPrem/backend
-source .venv/bin/activate
-python -m app.ingest.fpl
-```
-
-Safe to re-run — every write is an upsert keyed on the provider's id, so repeat runs refresh injuries, scores and fixture status instead of duplicating rows. Run it again whenever you want fresh data.
-
-Match stats and scoring are a second job:
-
-```bash
-python -m app.ingest.stats        # every gameweek with played fixtures
-python -m app.ingest.stats 1 2    # only these gameweek numbers
-```
-
-It pulls per-player stats and then recomputes points and matchup results for every league.
-
-Off-season there is nothing to score. For testing, `python -m app.ingest.synthetic` fabricates plausible stats for one gameweek and scores it. It refuses to run unless `ENVIRONMENT=development` and you type a confirmation — it writes invented data.
-
-The endpoints are public but unofficial and undocumented; they can change shape without warning, and the terms are murky for anything commercial. Fine for building, worth revisiting before launch.
-
-## Auth
-
-Pages: `/login` (sign in and sign up share one form), `/dashboard` (protected), `/auth/confirm` (handles links in Supabase emails).
-
-**For local development**, turn off email confirmation so you can sign up instantly: Supabase Dashboard → **Authentication → Sign In / Providers → Email** → disable *Confirm email*. Leave it on in production.
-
-If you keep confirmations on, set the redirect target: **Authentication → URL Configuration** → Site URL `http://localhost:3000`, and add `http://localhost:3000/auth/confirm` to the redirect allow-list.
-
-## How auth works
-
-1. User signs in through Supabase in the Next.js app; `@supabase/ssr` stores the session in cookies and `middleware.ts` refreshes it.
-2. The frontend reads the access token from the session and sends it to FastAPI:
-
-   ```ts
-   import { api } from "@/lib/api";
-   const me = await api.get("/api/me", { accessToken });
-   ```
-
-3. FastAPI's `get_current_user` dependency verifies the JWT — against the project's JWKS endpoint by default, or the shared HS256 secret if `SUPABASE_JWT_SECRET` is set — and injects the user.
-
-## Next steps
-
-- Auto-substitutions when a starter doesn't play
-- Waiver priority instead of first-come free agency
-- Trades between managers
-- Run ingestion and scoring on a schedule rather than by hand
-- Deploy: frontend to Vercel, backend to Railway or Fly
+- No auto-substitutions — a starter who doesn't play scores zero. Carry-forward
+  lineups soften the worst case.
+- No notifications; draft turns and trade offers are only visible in the app.
+- Google sign-in shows the Supabase project domain on the consent screen,
+  which needs either Google brand verification or a paid custom domain.
+- Timestamps render in a fixed timezone (`src/lib/datetime.ts`) rather than the
+  reader's.
