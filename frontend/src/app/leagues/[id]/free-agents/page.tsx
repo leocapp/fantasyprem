@@ -13,7 +13,7 @@ type TeamRow = { id: string; name: string };
 
 type RosterRow = {
   player_id: string;
-  players: { display_name: string; position: string } | null;
+  players: { display_name: string; position: string; is_active: boolean } | null;
 };
 
 type PlayerRow = {
@@ -80,7 +80,7 @@ export default async function FreeAgentsPage({
 
   const { data: roster } = await supabase
     .from("roster_entries")
-    .select("player_id, players (display_name, position)")
+    .select("player_id, players (display_name, position, is_active)")
     .eq("fantasy_team_id", team.id)
     .is("dropped_at", null)
     .returns<RosterRow[]>();
@@ -263,6 +263,7 @@ export default async function FreeAgentsPage({
                   {myPlayers.map((row) => (
                     <option key={row.player_id} value={row.player_id}>
                       {row.players?.position} {row.players?.display_name}
+                      {row.players?.is_active === false ? " (left the league)" : ""}
                     </option>
                   ))}
                 </select>

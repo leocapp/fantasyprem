@@ -246,6 +246,30 @@ def main() -> int:
         db.upsert("players", players, on_conflict="external_id")
         print(f"  players: {len(players)}")
 
+        # Players who leave the Premier League vanish from the feed entirely.
+        # Without this they'd linger as active forever: still on rosters, still
+        # selectable, still showing their old club's fixtures, scoring nothing.
+        #
+        # Marked inactive rather than deleted — FPL occasionally drops and
+        # re-adds a player, and this way that just flips back. Deleting would
+        # take their history and roster entries with it.
+        seen = {row["external_id"] for row in players}
+        departed = [
+            row["id"]
+            for row in db.select("players", select="id,external_id,is_active", is_active="is.true")
+            if row["external_id"] not in seen
+        ]
+
+        if departed:
+            for start in range(0, len(departed), 200):
+                chunk = departed[start : start + 200]
+                db.update(
+                    "players",
+                    {"is_active": False, "availability": "u"},
+                    id=f"in.({','.join(chunk)})",
+                )
+            print(f"  departed: {len(departed)} no longer in the feed, marked inactive")
+
         matches = fixture_rows(fixtures, season_id, gameweek_ids, club_ids)
         db.upsert("fixtures", matches, on_conflict="external_id")
         print(f"  fixtures: {len(matches)}")

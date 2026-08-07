@@ -124,6 +124,17 @@ through the Supabase SQL editor, in numerical order.
 
 Full setup and the pre-launch checklist are in [`DEPLOY.md`](DEPLOY.md).
 
+## Transfer windows
+
+Players who leave the Premier League disappear from the FPL feed. The ingestion
+job marks anyone missing as inactive rather than deleting them — history and
+roster entries survive, and a player FPL drops and re-adds simply flips back.
+
+An inactive player stays on the roster that owns them, flagged as gone and
+excluded from free agency, so the manager decides what to do rather than being
+silently left short. New arrivals need no handling: they're upserted on the
+provider's id and appear in free agents automatically.
+
 ## Known gaps
 
 - No auto-substitutions — a starter who doesn't play scores zero. Carry-forward

@@ -15,6 +15,8 @@ export type SquadPlayer = {
   news: string | null;
   chance: number | null;
   fixture: string;
+  /** Transferred out of the Premier League — they can no longer score. */
+  departed: boolean;
   /** FPL's expected points for the next gameweek, on FPL's scoring rules. */
   projected: number | null;
   lastPoints: number | null;
@@ -118,6 +120,9 @@ export default function PitchLineup({
 
   const bench = players.filter((player) => !selected.has(player.id));
   const starterCount = selected.size;
+  const departedStarters = players.filter(
+    (player) => player.departed && selected.has(player.id),
+  );
 
   function changeFormation(code: string) {
     const next = formations.find((row) => row.code === code);
@@ -171,6 +176,15 @@ export default function PitchLineup({
       {captain ? <input type="hidden" name="captain" value={captain} /> : null}
       {vice ? <input type="hidden" name="vice" value={vice} /> : null}
       <input type="hidden" name="formation" value={formationCode} />
+
+      {departedStarters.length > 0 ? (
+        <p className="notice notice-error">
+          {departedStarters.map((player) => player.name).join(", ")}{" "}
+          {departedStarters.length === 1 ? "has" : "have"} left the Premier League and will score
+          nothing. Swap {departedStarters.length === 1 ? "them" : "them"} out here, and drop{" "}
+          {departedStarters.length === 1 ? "them" : "them"} from your squad on the free agents page.
+        </p>
+      ) : null}
 
       {/* Scoreboard header: the gameweek is the single most important piece of
           context on this screen, so it gets stated loudly rather than inferred
@@ -418,11 +432,21 @@ export default function PitchLineup({
                       >
                         {player.name}
                       </Link>
-                      <AvailabilityFlag
-                        availability={player.availability}
-                        news={player.news}
-                        chance={player.chance}
-                      />
+                      {player.departed ? (
+                        <span
+                          className="shrink-0 rounded px-1 text-[9px] font-bold"
+                          style={{ background: "rgb(248 113 113 / 0.2)", color: "var(--danger)" }}
+                          title="Transferred out of the Premier League — cannot score"
+                        >
+                          GONE
+                        </span>
+                      ) : (
+                        <AvailabilityFlag
+                          availability={player.availability}
+                          news={player.news}
+                          chance={player.chance}
+                        />
+                      )}
                       {captain === player.id ? (
                         <span className="rounded bg-amber-500/20 px-1 text-[9px] font-bold text-amber-300">
                           C
