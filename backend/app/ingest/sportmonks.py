@@ -209,6 +209,58 @@ def absence_rows(
     return rows
 
 
+def missing_player_rows(
+    fixture: dict[str, Any],
+    player_ids: dict[str, str],
+    club_ids: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Players in this fixture's lineups that we don't hold yet.
+
+    Needed because a past season's lineups are full of people who are no longer
+    in the league. Without rows for them their matches are dropped, which skews
+    every positional baseline and every replacement level computed from that
+    season — the numbers the draft board is built on.
+
+    Created inactive. They are historical: they should count towards last
+    season's totals and draft rankings without appearing in the player list,
+    the draft board or free agency.
+    """
+    rows: dict[str, dict[str, Any]] = {}
+
+    for entry in fixture.get("lineups") or []:
+        provider_id = str(entry.get("player_id"))
+        if not provider_id or provider_id in player_ids or provider_id in rows:
+            continue
+
+        player = entry.get("player") or {}
+        position = POSITIONS.get(player.get("position_id") or entry.get("position_id"))
+
+        # Position is an enum and not nullable, and a player we can't place
+        # can't be scored either. Rare enough to skip rather than guess.
+        if not position:
+            continue
+
+        name = player.get("display_name") or player.get("name")
+        if not name:
+            continue
+
+        rows[provider_id] = {
+            "sportmonks_id": provider_id,
+            "display_name": name,
+            "first_name": player.get("firstname"),
+            "last_name": player.get("lastname") or name,
+            "position": position,
+            "photo_url": player.get("image_path"),
+            # The club they turned out for in this match, which for a past
+            # season is more useful than wherever they are now.
+            "club_id": club_ids.get(str(entry.get("team_id"))),
+            "date_of_birth": player.get("date_of_birth"),
+            "is_active": False,
+        }
+
+    return list(rows.values())
+
+
 def stat_rows(
     fixture: dict[str, Any],
     fixture_id: str,

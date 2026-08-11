@@ -5,6 +5,11 @@ import AvailabilityFlag from "@/components/AvailabilityFlag";
 import BackLink from "@/components/BackLink";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import ScoringKey, { type ScoringRule } from "@/components/ScoringKey";
+import SeasonStatTable, {
+  EMPTY_SEASON,
+  SEASON_STAT_COLUMNS,
+  type SeasonStats,
+} from "@/components/SeasonStatTable";
 import { formatDateTime } from "@/lib/datetime";
 import { createClient } from "@/lib/supabase/server";
 
@@ -63,17 +68,6 @@ type ScoreRow = {
   breakdown: Record<string, number>;
 };
 
-type SeasonStatsRow = {
-  appearances: number;
-  full_games: number;
-  minutes: number;
-  goals: number;
-  assists: number;
-  clean_sheets: number;
-  saves: number;
-  yellow_cards: number;
-  red_cards: number;
-};
 
 type SeasonPointsRow = {
   total_points: number;
@@ -190,15 +184,24 @@ export default async function PlayerDetailPage({
     .or(`applies_to.is.null,applies_to.eq.${player.position}`)
     .returns<ScoringRule[]>();
 
-  const [{ data: seasonStats }, { data: seasonPoints }] = await Promise.all([
+  // The most recent season that isn't this one. Null before any backfill has
+  // run, which is the only case where the collapsed table is hidden entirely.
+  const { data: previousSeason } = await supabase
+    .from("seasons")
+    .select("id, label")
+    .neq("id", league.season_id)
+    .order("ends_on", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ id: string; label: string }>();
+
+  const [{ data: seasonStats }, { data: seasonPoints }, { data: lastSeasonStats }] =
+    await Promise.all([
     supabase
       .from("player_season_stats")
-      .select(
-        "appearances, full_games, minutes, goals, assists, clean_sheets, saves, yellow_cards, red_cards",
-      )
+      .select(SEASON_STAT_COLUMNS)
       .eq("player_id", playerId)
       .eq("season_id", league.season_id)
-      .maybeSingle<SeasonStatsRow>(),
+      .maybeSingle<SeasonStats>(),
 
     supabase
       .from("player_league_season_points")
@@ -206,7 +209,26 @@ export default async function PlayerDetailPage({
       .eq("league_id", id)
       .eq("player_id", playerId)
       .maybeSingle<SeasonPointsRow>(),
+
+    previousSeason
+      ? supabase
+          .from("player_season_stats")
+          .select(SEASON_STAT_COLUMNS)
+          .eq("player_id", playerId)
+          .eq("season_id", previousSeason.id)
+          .maybeSingle<SeasonStats>()
+      : Promise.resolve({ data: null }),
   ]);
+
+  // A player with no rows has played no matches, which is a table of zeros
+  // rather than an absent table.
+  const seasonStatsOrZero: SeasonStats = seasonStats ?? EMPTY_SEASON;
+
+  // Last season is different: no rows means they weren't in this league's data
+  // at all — a new signing, or someone promoted from outside — and zeros would
+  // read as "played and did nothing", which is a lie.
+  const lastSeason = lastSeasonStats;
+  const lastSeasonLabel = previousSeason?.label;
 
   // Our own projection for upcoming gameweeks, plus the points those
   // expectations imply under this league's rules.
@@ -370,92 +392,79 @@ export default async function PlayerDetailPage({
         </div>
       </div>
 
-      {seasonStats && seasonStats.appearances > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <section className="card">
-            <h2 className="section-label">Season so far · on the pitch</h2>
-            <dl className="mt-3 space-y-1 text-sm">
-              {(
-                [
-                  [
-                    "Appearances",
-                    `${seasonStats.appearances} of ${seasonPoints?.gameweeks_elapsed ?? 0}`,
-                  ],
-                  ["Started (60+ mins)", seasonStats.full_games],
-                  ["Minutes", seasonStats.minutes],
-                  [
-                    "Minutes per appearance",
-                    seasonStats.appearances > 0
-                      ? Math.round(seasonStats.minutes / seasonStats.appearances)
-                      : "–",
-                  ],
-                  ["Goals", seasonStats.goals],
-                  ["Assists", seasonStats.assists],
-                  ...(player.position === "GK" || player.position === "DEF"
-                    ? ([
-                        ["Clean sheets", seasonStats.clean_sheets],
-                        ...(player.position === "GK"
-                          ? ([["Saves", seasonStats.saves]] as const)
-                          : []),
-                      ] as const)
-                    : []),
-                  [
-                    "Cards",
-                    `${seasonStats.yellow_cards}Y${
-                      seasonStats.red_cards ? ` ${seasonStats.red_cards}R` : ""
-                    }`,
-                  ],
-                ] as const
-              ).map(([label, value]) => (
-                <div key={label} className="flex justify-between gap-2">
-                  <dt className="dim">{label}</dt>
-                  <dd className="numeric">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <section className="card">
+          <h2 className="section-label">
+            Season so far · on the pitch
+            <span className="ml-2 font-normal dim">
+              {seasonStatsOrZero.appearances} of {seasonPoints?.gameweeks_elapsed ?? 0} gameweeks
+            </span>
+          </h2>
+          {/* Rendered even with nothing in it. A table of zeros says "hasn't
+              played yet"; an absent table says nothing at all, and before the
+              season starts that is every player on the site. */}
+          <div className="mt-3">
+            <SeasonStatTable stats={seasonStatsOrZero} position={player.position} />
+          </div>
+        </section>
 
-          <section className="card">
-            <div className="flex items-baseline justify-between">
-              <h2 className="section-label">Season so far · points</h2>
-              <span className="numeric text-2xl font-bold">
-                {seasonPoints?.total_points ?? 0}
-              </span>
-            </div>
+        <section className="card">
+          <div className="flex items-baseline justify-between">
+            <h2 className="section-label">Season so far · points</h2>
+            <span className="numeric text-2xl font-bold">
+              {seasonPoints?.total_points ?? 0}
+            </span>
+          </div>
 
-            <dl className="mt-3 space-y-1 text-sm">
-              {seasonBreakdownRows.map(([key, value]) => (
-                <div key={key} className="flex justify-between gap-2">
-                  <dt className="dim">{BREAKDOWN_LABELS[key] ?? key}</dt>
-                  <dd
-                    className={`numeric ${value < 0 ? "text-[var(--danger)]" : ""}`}
-                  >
-                    {value > 0 ? "+" : ""}
-                    {value}
-                  </dd>
-                </div>
-              ))}
-
-              <div className="flex justify-between gap-2 border-t border-[var(--border)] pt-1">
-                <dt className="dim">Per gameweek</dt>
-                <dd className="numeric">
-                  {seasonPoints && seasonPoints.gameweeks_elapsed > 0
-                    ? (seasonPoints.total_points / seasonPoints.gameweeks_elapsed).toFixed(1)
-                    : "–"}
+          <dl className="mt-3 space-y-1 text-sm">
+            {seasonBreakdownRows.map(([key, value]) => (
+              <div key={key} className="flex justify-between gap-2">
+                <dt className="dim">{BREAKDOWN_LABELS[key] ?? key}</dt>
+                <dd className={`numeric ${value < 0 ? "text-[var(--danger)]" : ""}`}>
+                  {value > 0 ? "+" : ""}
+                  {value}
                 </dd>
               </div>
-              <div className="flex justify-between gap-2">
-                <dt className="dim">Best gameweek</dt>
-                <dd className="numeric">{seasonPoints?.best_gameweek ?? "–"}</dd>
-              </div>
-            </dl>
+            ))}
 
-            <p className="mt-2 text-xs dim">
-              Per gameweek counts every week of the season, including ones they missed — an
-              unavailable player costs you those weeks.
-            </p>
-          </section>
-        </div>
+            <div className="flex justify-between gap-2 border-t border-[var(--border)] pt-1">
+              <dt className="dim">Per gameweek</dt>
+              <dd className="numeric">
+                {seasonPoints && seasonPoints.gameweeks_elapsed > 0
+                  ? (seasonPoints.total_points / seasonPoints.gameweeks_elapsed).toFixed(1)
+                  : "–"}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="dim">Best gameweek</dt>
+              <dd className="numeric">{seasonPoints?.best_gameweek ?? "–"}</dd>
+            </div>
+          </dl>
+
+          <p className="mt-2 text-xs dim">
+            Per gameweek counts every week of the season, including ones they missed — an
+            unavailable player costs you those weeks.
+          </p>
+        </section>
+      </div>
+
+      {/* Native details/summary: collapsed by default, works before hydration,
+          and keeps this page a server component. */}
+      {lastSeason ? (
+        <details className="card">
+          <summary className="cursor-pointer text-sm font-medium">
+            {lastSeasonLabel ?? "Last season"} · stat totals
+            <span className="ml-2 font-normal dim">
+              {lastSeason.appearances} apps, {lastSeason.goals}g {lastSeason.assists}a
+            </span>
+          </summary>
+          <div className="mt-3">
+            <SeasonStatTable stats={lastSeason} position={player.position} />
+          </div>
+          <p className="mt-2 text-xs dim">
+            Previous seasons totals - in premier league. Some players will not have 25/26 totals if they did not play in the Prem.
+          </p>
+        </details>
       ) : null}
 
       {upcoming.length > 0 ? (

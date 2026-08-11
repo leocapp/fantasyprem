@@ -14,6 +14,7 @@ the rate limit, so a full season takes several minutes.
 from __future__ import annotations
 
 import sys
+from collections import defaultdict
 from typing import Any
 
 from app.config import get_settings
@@ -21,6 +22,7 @@ from app.ingest.sportmonks import (
     PREMIER_LEAGUE_ID,
     Sportmonks,
     club_rows,
+    missing_player_rows,
     stat_rows,
 )
 from app.ingest.supabase_rest import SupabaseRest
@@ -44,6 +46,8 @@ def pick_season(api: Sportmonks, requested: str | None) -> dict[str, Any]:
 
 
 def main(argv: list[str]) -> int:
+    # --refresh redoes fixtures already recorded, for correcting a bad ingest.
+    refresh = "--refresh" in argv
     settings = get_settings()
 
     if not settings.sportmonks_token:
@@ -54,7 +58,7 @@ def main(argv: list[str]) -> int:
         Sportmonks(settings.sportmonks_token) as api,
         SupabaseRest(settings.supabase_url or "", settings.supabase_service_role_key or "") as db,
     ):
-        season = pick_season(api, argv[0] if argv else None)
+        season = pick_season(api, next((a for a in argv if not a.startswith('-')), None))
         label = season.get("name") or str(season["id"])
         print(f"Backfilling {label} (Sportmonks season {season['id']})")
 
@@ -194,25 +198,65 @@ def main(argv: list[str]) -> int:
             if row["sportmonks_id"]
         }
 
+        # A fixture counts as done only if it holds a plausible number of rows.
+        # Keying this on "has any row at all" is what made an interrupted run
+        # permanent: a fixture written when half its players were unknown looked
+        # finished forever, and no later run would revisit it. A real match
+        # yields at least the 22 starters.
+        MINIMUM_ROWS_PER_FIXTURE = 22
+
+        counts: dict[str, int] = defaultdict(int)
+        for row in db.select("player_match_stats", select="fixture_id"):
+            counts[row["fixture_id"]] += 1
+
         already = {
-            row["fixture_id"] for row in db.select("player_match_stats", select="fixture_id")
+            fixture_id
+            for fixture_id, count in counts.items()
+            if count >= MINIMUM_ROWS_PER_FIXTURE
         }
 
         pending = [
             fixture
             for fixture in fixtures
             if fixture_row_ids.get(str(fixture["id"]))
-            and fixture_row_ids[str(fixture["id"])] not in already
+            and (refresh or fixture_row_ids[str(fixture["id"])] not in already)
         ]
+
+        thin = sum(1 for count in counts.values() if count < MINIMUM_ROWS_PER_FIXTURE)
+        if thin:
+            print(f"  {thin} fixture(s) hold fewer than {MINIMUM_ROWS_PER_FIXTURE} rows — redoing")
 
         print(f"  fetching stats for {len(pending)} fixtures — this takes a few minutes")
 
         written = 0
+        discovered = 0
         for index, fixture in enumerate(pending, start=1):
+            # lineups.player is what makes this self-sufficient. Without it we
+            # can only record players we already hold, which silently discarded
+            # everyone who has since left the league — about 40% of last
+            # season — and anyone not yet ingested when their fixture was
+            # processed.
             detail = api.get(
-                f"/fixtures/{fixture['id']}", include="lineups.details;scores;participants"
+                f"/fixtures/{fixture['id']}",
+                include="lineups.details;lineups.player;scores;participants",
             )
             data = detail.get("data") or {}
+
+            # Create anyone we don't recognise before mapping stats. They are
+            # inactive: these are last season's players, and an inactive player
+            # stays out of /players, the draft board and free agency while their
+            # history still counts towards draft rankings and season totals.
+            created = missing_player_rows(data, player_ids, club_ids)
+            if created:
+                db.upsert("players", created, on_conflict="sportmonks_id")
+                for row in db.select(
+                    "players",
+                    select="id,sportmonks_id",
+                    sportmonks_id=f"in.({','.join(r['sportmonks_id'] for r in created)})",
+                ):
+                    if row["sportmonks_id"]:
+                        player_ids[row["sportmonks_id"]] = row["id"]
+                discovered += len(created)
 
             scores = {
                 score.get("participant_id"): (score.get("score") or {}).get("goals")
@@ -239,6 +283,7 @@ def main(argv: list[str]) -> int:
                 print(f"    {index}/{len(pending)} fixtures, {written} player rows")
 
         print(f"  player match rows: {written}")
+        print(f"  players created from lineups: {discovered}")
 
     print("Done.")
     return 0
