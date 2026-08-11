@@ -129,6 +129,12 @@ const BREAKDOWN_LABELS: Record<string, string> = {
   yellow_cards: "Yellow cards",
   red_cards: "Red cards",
   bonus: "Bonus",
+  shots_on_target: "Shots on target",
+  key_passes: "Key passes",
+  tackles: "Tackles",
+  interceptions: "Interceptions",
+  big_chances_created: "Big chances created",
+  duels_won: "Duels won",
 };
 
 export const dynamic = "force-dynamic";

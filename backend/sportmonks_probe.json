@@ -1,0 +1,1297 @@
+{
+  "leagues": {
+    "data": [
+      {
+        "id": 8,
+        "sport_id": 1,
+        "country_id": 462,
+        "name": "Premier League",
+        "active": true,
+        "short_code": "UK PL",
+        "image_path": "https://cdn.sportmonks.com/images/soccer/leagues/8/8.png",
+        "type": "league",
+        "sub_type": "domestic",
+        "last_played_at": "2026-05-24 15:00:00",
+        "category": 1,
+        "has_jerseys": false,
+        "currentseason": {
+          "id": 28083,
+          "sport_id": 1,
+          "league_id": 8,
+          "tie_breaker_rule_id": 1526,
+          "name": "2026/2027",
+          "finished": false,
+          "pending": false,
+          "is_current": true,
+          "starting_at": "2026-08-21",
+          "ending_at": "2027-05-30",
+          "standings_recalculated_at": "2026-07-09 08:39:02",
+          "games_in_current_week": false
+        }
+      },
+      {
+        "id": 82,
+        "sport_id": 1,
+        "country_id": 11,
+        "name": "Bundesliga",
+        "active": true,
+        "short_code": "GER BI",
+        "image_path": "https://cdn.sportmonks.com/images/soccer/leagues/18/82.png",
+        "type": "league",
+        "sub_type": "domestic",
+        "last_played_at": "2024-12-14 14:30:00",
+        "category": 1,
+        "has_jerseys": false,
+        "currentseason": {
+          "id": 28321,
+          "sport_id": 1,
+          "league_id": 82,
+          "tie_breaker_rule_id": 171,
+          "name": "2026/2027",
+          "finished": false,
+          "pending": false,
+          "is_current": true,
+          "starting_at": "2026-08-28",
+          "ending_at": "2027-05-22",
+          "standings_recalculated_at": "2026-07-02 17:30:02",
+          "games_in_current_week": false
+        }
+      }
+    ],
+    "pagination": {
+      "count": 5,
+      "per_page": 25,
+      "has_more": false,
+      "current_page": 1,
+      "next_page": null,
+      "next_cursor": null
+    },
+    "subscription": [
+      {
+        "meta": {
+          "current_timestamp": 1786468503,
+          "next_billing_cycle": "2026-08-25T18:05:20 UTC"
+        },
+        "plans": [
+          {
+            "plan": "Starter - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Advanced"
+          }
+        ],
+        "add_ons": [
+          {
+            "add_on": "Historical Data",
+            "sport": "Football",
+            "category": "Historical data"
+          },
+          {
+            "add_on": "Match Facts - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Match facts"
+          }
+        ],
+        "widgets": [],
+        "bundles": []
+      }
+    ],
+    "rate_limit": {
+      "resets_in_seconds": 3292,
+      "remaining": 1997,
+      "requested_entity": "League"
+    },
+    "timezone": "UTC"
+  },
+  "season": {
+    "data": {
+      "id": 28083,
+      "sport_id": 1,
+      "league_id": 8,
+      "tie_breaker_rule_id": 1526,
+      "name": "2026/2027",
+      "finished": false,
+      "pending": false,
+      "is_current": true,
+      "starting_at": "2026-08-21",
+      "ending_at": "2027-05-30",
+      "standings_recalculated_at": "2026-07-09 08:39:02",
+      "games_in_current_week": false
+    },
+    "subscription": [
+      {
+        "meta": {
+          "current_timestamp": 1786468503,
+          "next_billing_cycle": "2026-08-25T18:05:20 UTC"
+        },
+        "plans": [
+          {
+            "plan": "Starter - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Advanced"
+          }
+        ],
+        "add_ons": [
+          {
+            "add_on": "Historical Data",
+            "sport": "Football",
+            "category": "Historical data"
+          },
+          {
+            "add_on": "Match Facts - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Match facts"
+          }
+        ],
+        "widgets": [],
+        "bundles": []
+      }
+    ],
+    "rate_limit": {
+      "resets_in_seconds": 3507,
+      "remaining": 1998,
+      "requested_entity": "Season"
+    },
+    "timezone": "UTC"
+  },
+  "teams": {
+    "data": [
+      {
+        "id": 78,
+        "sport_id": 1,
+        "country_id": 462,
+        "venue_id": 480,
+        "gender": "male",
+        "name": "Brighton & Hove Albion",
+        "short_code": "BHA",
+        "image_path": "https://cdn.sportmonks.com/images/soccer/teams/14/78.png",
+        "founded": 1901,
+        "type": "domestic",
+        "placeholder": false,
+        "last_played_at": "2026-08-08 14:00:00"
+      },
+      {
+        "id": 11,
+        "sport_id": 1,
+        "country_id": 462,
+        "venue_id": 485,
+        "gender": "male",
+        "name": "Fulham",
+        "short_code": "FUL",
+        "image_path": "https://cdn.sportmonks.com/images/soccer/teams/11/11.png",
+        "founded": 1879,
+        "type": "domestic",
+        "placeholder": false,
+        "last_played_at": "2026-08-07 17:00:00"
+      }
+    ],
+    "subscription": [
+      {
+        "meta": {
+          "current_timestamp": 1786468504,
+          "next_billing_cycle": "2026-08-25T18:05:20 UTC"
+        },
+        "plans": [
+          {
+            "plan": "Starter - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Advanced"
+          }
+        ],
+        "add_ons": [
+          {
+            "add_on": "Historical Data",
+            "sport": "Football",
+            "category": "Historical data"
+          },
+          {
+            "add_on": "Match Facts - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Match facts"
+          }
+        ],
+        "widgets": [],
+        "bundles": []
+      }
+    ],
+    "rate_limit": {
+      "resets_in_seconds": 3292,
+      "remaining": 1997,
+      "requested_entity": "Team"
+    },
+    "timezone": "UTC"
+  },
+  "squads": {
+    "data": [
+      {
+        "id": 1442192,
+        "transfer_id": 546995,
+        "player_id": 54191,
+        "team_id": 78,
+        "position_id": 25,
+        "detailed_position_id": 148,
+        "start": "2023-07-26",
+        "end": "2027-06-30",
+        "captain": false,
+        "jersey_number": 3,
+        "player": {
+          "id": 54191,
+          "sport_id": 1,
+          "country_id": 5,
+          "nationality_id": 5,
+          "city_id": 10680,
+          "position_id": 25,
+          "detailed_position_id": 148,
+          "type_id": 25,
+          "common_name": "I. dos Santos de Paulo",
+          "firstname": "Igor Julio",
+          "lastname": "dos Santos de Paulo",
+          "name": "Igor Julio dos Santos de Paulo",
+          "display_name": "Igor Julio",
+          "image_path": "https://cdn.sportmonks.com/images/soccer/players/15/54191.png",
+          "height": 188,
+          "weight": 85,
+          "date_of_birth": "1998-02-07",
+          "gender": "male",
+          "position": {
+            "id": 25,
+            "name": "Defender",
+            "code": "defender",
+            "developer_name": "DEFENDER",
+            "model_type": "position",
+            "stat_group": null
+          }
+        }
+      },
+      {
+        "id": 1008102,
+        "transfer_id": null,
+        "player_id": 37655226,
+        "team_id": 78,
+        "position_id": 27,
+        "detailed_position_id": 156,
+        "start": "2024-07-01",
+        "end": "2029-06-30",
+        "captain": false,
+        "jersey_number": 11,
+        "player": {
+          "id": 37655226,
+          "sport_id": 1,
+          "country_id": 2507,
+          "nationality_id": 2507,
+          "city_id": 102469,
+          "position_id": 27,
+          "detailed_position_id": 156,
+          "type_id": null,
+          "common_name": "Y. Minteh",
+          "firstname": "Yankuba",
+          "lastname": "Minteh",
+          "name": "Yankuba Minteh",
+          "display_name": "Yankuba Minteh",
+          "image_path": "https://cdn.sportmonks.com/images/soccer/players/26/37655226.png",
+          "height": 180,
+          "weight": 65,
+          "date_of_birth": "2004-07-22",
+          "gender": "male",
+          "position": {
+            "id": 27,
+            "name": "Attacker",
+            "code": "attacker",
+            "developer_name": "ATTACKER",
+            "model_type": "position",
+            "stat_group": null
+          }
+        }
+      }
+    ],
+    "subscription": [
+      {
+        "meta": {
+          "current_timestamp": 1786468504,
+          "next_billing_cycle": "2026-08-25T18:05:20 UTC"
+        },
+        "plans": [
+          {
+            "plan": "Starter - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Advanced"
+          }
+        ],
+        "add_ons": [
+          {
+            "add_on": "Historical Data",
+            "sport": "Football",
+            "category": "Historical data"
+          },
+          {
+            "add_on": "Match Facts - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Match facts"
+          }
+        ],
+        "widgets": [],
+        "bundles": []
+      }
+    ],
+    "rate_limit": {
+      "resets_in_seconds": 3292,
+      "remaining": 1997,
+      "requested_entity": "PlayerTeam"
+    },
+    "timezone": "UTC"
+  },
+  "player_detail": {
+    "data": {
+      "id": 54191,
+      "sport_id": 1,
+      "country_id": 5,
+      "nationality_id": 5,
+      "city_id": 10680,
+      "position_id": 25,
+      "detailed_position_id": 148,
+      "type_id": 25,
+      "common_name": "I. dos Santos de Paulo",
+      "firstname": "Igor Julio",
+      "lastname": "dos Santos de Paulo",
+      "name": "Igor Julio dos Santos de Paulo",
+      "display_name": "Igor Julio",
+      "image_path": "https://cdn.sportmonks.com/images/soccer/players/15/54191.png",
+      "height": 188,
+      "weight": 85,
+      "date_of_birth": "1998-02-07",
+      "gender": "male",
+      "statistics": [
+        {
+          "id": 1831961726,
+          "player_id": 54191,
+          "team_id": 1,
+          "season_id": 25583,
+          "has_values": true,
+          "position_id": 25,
+          "jersey_number": 5,
+          "details": [
+            {
+              "id": 49059940,
+              "player_statistic_id": 1831961726,
+              "type_id": 56,
+              "value": {
+                "total": 1
+              }
+            },
+            {
+              "id": 48531222,
+              "player_statistic_id": 1831961726,
+              "type_id": 59,
+              "value": {
+                "in": 3,
+                "out": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": 558854842,
+          "player_id": 54191,
+          "team_id": 78,
+          "season_id": 21646,
+          "has_values": true,
+          "position_id": 25,
+          "jersey_number": 3,
+          "details": [
+            {
+              "id": 34126020,
+              "player_statistic_id": 558854842,
+              "type_id": 41,
+              "value": {
+                "total": 3
+              }
+            },
+            {
+              "id": 33581302,
+              "player_statistic_id": 558854842,
+              "type_id": 42,
+              "value": {
+                "total": 5
+              }
+            }
+          ]
+        }
+      ],
+      "position": {
+        "id": 25,
+        "name": "Defender",
+        "code": "defender",
+        "developer_name": "DEFENDER",
+        "model_type": "position",
+        "stat_group": null
+      },
+      "nationality": {
+        "id": 5,
+        "continent_id": 7,
+        "name": "Brazil",
+        "official_name": "Federative Republic of Brazil",
+        "fifa_name": "BRA",
+        "iso2": "BR",
+        "iso3": "BRA",
+        "latitude": "-10.81045150756836",
+        "longitude": "-52.97311782836914",
+        "borders": [
+          "ARG",
+          "BOL"
+        ],
+        "image_path": "https://cdn.sportmonks.com/images/countries/png/short/br.png"
+      }
+    },
+    "subscription": [
+      {
+        "meta": {
+          "current_timestamp": 1786468505,
+          "next_billing_cycle": "2026-08-25T18:05:20 UTC"
+        },
+        "plans": [
+          {
+            "plan": "Starter - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Advanced"
+          }
+        ],
+        "add_ons": [
+          {
+            "add_on": "Historical Data",
+            "sport": "Football",
+            "category": "Historical data"
+          },
+          {
+            "add_on": "Match Facts - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Match facts"
+          }
+        ],
+        "widgets": [],
+        "bundles": []
+      }
+    ],
+    "rate_limit": {
+      "resets_in_seconds": 3507,
+      "remaining": 1998,
+      "requested_entity": "Player"
+    },
+    "timezone": "UTC"
+  },
+  "all_seasons": {
+    "data": {
+      "id": 8,
+      "sport_id": 1,
+      "country_id": 462,
+      "name": "Premier League",
+      "active": true,
+      "short_code": "UK PL",
+      "image_path": "https://cdn.sportmonks.com/images/soccer/leagues/8/8.png",
+      "type": "league",
+      "sub_type": "domestic",
+      "last_played_at": "2026-05-24 15:00:00",
+      "category": 1,
+      "has_jerseys": false,
+      "seasons": [
+        {
+          "id": 9,
+          "sport_id": 1,
+          "league_id": 8,
+          "tie_breaker_rule_id": 1526,
+          "name": "2011/2012",
+          "finished": true,
+          "pending": false,
+          "is_current": false,
+          "starting_at": "2011-08-13",
+          "ending_at": "2012-05-13",
+          "standings_recalculated_at": "2026-03-08 17:18:33",
+          "games_in_current_week": false
+        },
+        {
+          "id": 1586,
+          "sport_id": 1,
+          "league_id": 8,
+          "tie_breaker_rule_id": 1526,
+          "name": "2005/2006",
+          "finished": true,
+          "pending": false,
+          "is_current": false,
+          "starting_at": "2005-08-13",
+          "ending_at": "2006-05-07",
+          "standings_recalculated_at": "2023-11-30 13:57:58",
+          "games_in_current_week": false
+        }
+      ]
+    },
+    "subscription": [
+      {
+        "meta": {
+          "current_timestamp": 1786468506,
+          "next_billing_cycle": "2026-08-25T18:05:20 UTC"
+        },
+        "plans": [
+          {
+            "plan": "Starter - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Advanced"
+          }
+        ],
+        "add_ons": [
+          {
+            "add_on": "Historical Data",
+            "sport": "Football",
+            "category": "Historical data"
+          },
+          {
+            "add_on": "Match Facts - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Match facts"
+          }
+        ],
+        "widgets": [],
+        "bundles": []
+      }
+    ],
+    "rate_limit": {
+      "resets_in_seconds": 3289,
+      "remaining": 1996,
+      "requested_entity": "League"
+    },
+    "timezone": "UTC"
+  },
+  "fixtures_via_schedules": {
+    "error": 400,
+    "body": "{\"message\":\"You may not use more than 0 nested includes on this endpoint\",\"link\":\"https:\\/\\/docs.sportmonks.com\\/football\\/api\\/response-codes\\/include-exceptions\"}"
+  },
+  "fixtures_via_fixtures_filter": {
+    "data": [
+      {
+        "id": 19427146,
+        "sport_id": 1,
+        "league_id": 8,
+        "season_id": 25583,
+        "stage_id": 77476879,
+        "group_id": null,
+        "aggregate_id": null,
+        "round_id": 372144,
+        "state_id": 5,
+        "venue_id": 338817,
+        "name": "Brentford vs Brighton & Hove Albion",
+        "starting_at": "2026-02-21 15:00:00",
+        "result_info": "Brighton & Hove Albion won after full-time.",
+        "leg": "1/1",
+        "details": null,
+        "length": 90,
+        "placeholder": false,
+        "has_odds": true,
+        "has_premium_odds": true,
+        "starting_at_timestamp": 1771686000,
+        "participants": [
+          {
+            "id": 78,
+            "sport_id": 1,
+            "country_id": 462,
+            "venue_id": 480,
+            "gender": "male",
+            "name": "Brighton & Hove Albion",
+            "short_code": "BHA",
+            "image_path": "https://cdn.sportmonks.com/images/soccer/teams/14/78.png",
+            "founded": 1901,
+            "type": "domestic",
+            "placeholder": false,
+            "last_played_at": "2026-08-08 14:00:00",
+            "meta": {
+              "location": "away",
+              "winner": true,
+              "position": 14
+            }
+          },
+          {
+            "id": 236,
+            "sport_id": 1,
+            "country_id": 462,
+            "venue_id": 338817,
+            "gender": "male",
+            "name": "Brentford",
+            "short_code": "BRE",
+            "image_path": "https://cdn.sportmonks.com/images/soccer/teams/12/236.png",
+            "founded": 1889,
+            "type": "domestic",
+            "placeholder": false,
+            "last_played_at": "2026-08-08 15:00:00",
+            "meta": {
+              "location": "home",
+              "winner": false,
+              "position": 7
+            }
+          }
+        ],
+        "state": {
+          "id": 5,
+          "state": "FT",
+          "name": "Full Time",
+          "short_name": "FT",
+          "developer_name": "FT"
+        }
+      },
+      {
+        "id": 19427147,
+        "sport_id": 1,
+        "league_id": 8,
+        "season_id": 25583,
+        "stage_id": 77476879,
+        "group_id": null,
+        "aggregate_id": null,
+        "round_id": 372144,
+        "state_id": 5,
+        "venue_id": 321614,
+        "name": "Chelsea vs Burnley",
+        "starting_at": "2026-02-21 15:00:00",
+        "result_info": "Game ended in draw.",
+        "leg": "1/1",
+        "details": null,
+        "length": 90,
+        "placeholder": false,
+        "has_odds": true,
+        "has_premium_odds": true,
+        "starting_at_timestamp": 1771686000,
+        "participants": [
+          {
+            "id": 27,
+            "sport_id": 1,
+            "country_id": 462,
+            "venue_id": 200,
+            "gender": "male",
+            "name": "Burnley",
+            "short_code": "BUR",
+            "image_path": "https://cdn.sportmonks.com/images/soccer/teams/27/27.png",
+            "founded": 1882,
+            "type": "domestic",
+            "placeholder": false,
+            "last_played_at": "2026-08-08 14:00:00",
+            "meta": {
+              "location": "away",
+              "winner": false,
+              "position": 19
+            }
+          },
+          {
+            "id": 18,
+            "sport_id": 1,
+            "country_id": 462,
+            "venue_id": 321614,
+            "gender": "male",
+            "name": "Chelsea",
+            "short_code": "CHE",
+            "image_path": "https://cdn.sportmonks.com/images/soccer/teams/18/18.png",
+            "founded": 1905,
+            "type": "domestic",
+            "placeholder": false,
+            "last_played_at": "2026-08-09 12:00:00",
+            "meta": {
+              "location": "home",
+              "winner": false,
+              "position": 5
+            }
+          }
+        ],
+        "state": {
+          "id": 5,
+          "state": "FT",
+          "name": "Full Time",
+          "short_name": "FT",
+          "developer_name": "FT"
+        }
+      }
+    ],
+    "pagination": {
+      "count": 25,
+      "per_page": 25,
+      "has_more": true,
+      "current_page": 1,
+      "next_page": "https://api.sportmonks.com/v3/football/fixtures?filters=fixtureSeasons%3A25583&include=participants%3Bstate&page=2",
+      "next_cursor": "https://api.sportmonks.com/v3/football/fixtures?filters=fixtureSeasons%3A25583&include=participants%3Bstate&cursor=WzEsMjUsWzE5NDI3MTcwXSxbWyJzcG9ydHMuZml4dHVyZXMuaWQiLDBdXV0"
+    },
+    "subscription": [
+      {
+        "meta": {
+          "current_timestamp": 1786468506,
+          "next_billing_cycle": "2026-08-25T18:05:20 UTC"
+        },
+        "plans": [
+          {
+            "plan": "Starter - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Advanced"
+          }
+        ],
+        "add_ons": [
+          {
+            "add_on": "Historical Data",
+            "sport": "Football",
+            "category": "Historical data"
+          },
+          {
+            "add_on": "Match Facts - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Match facts"
+          }
+        ],
+        "widgets": [],
+        "bundles": []
+      }
+    ],
+    "rate_limit": {
+      "resets_in_seconds": 3291,
+      "remaining": 1997,
+      "requested_entity": "Fixture"
+    },
+    "timezone": "UTC"
+  },
+  "fixtures": {
+    "data": [
+      {
+        "id": 19427146,
+        "sport_id": 1,
+        "league_id": 8,
+        "season_id": 25583,
+        "stage_id": 77476879,
+        "group_id": null,
+        "aggregate_id": null,
+        "round_id": 372144,
+        "state_id": 5,
+        "venue_id": 338817,
+        "name": "Brentford vs Brighton & Hove Albion",
+        "starting_at": "2026-02-21 15:00:00",
+        "result_info": "Brighton & Hove Albion won after full-time.",
+        "leg": "1/1",
+        "details": null,
+        "length": 90,
+        "placeholder": false,
+        "has_odds": true,
+        "has_premium_odds": true,
+        "starting_at_timestamp": 1771686000,
+        "participants": [
+          {
+            "id": 78,
+            "sport_id": 1,
+            "country_id": 462,
+            "venue_id": 480,
+            "gender": "male",
+            "name": "Brighton & Hove Albion",
+            "short_code": "BHA",
+            "image_path": "https://cdn.sportmonks.com/images/soccer/teams/14/78.png",
+            "founded": 1901,
+            "type": "domestic",
+            "placeholder": false,
+            "last_played_at": "2026-08-08 14:00:00",
+            "meta": {
+              "location": "away",
+              "winner": true,
+              "position": 14
+            }
+          },
+          {
+            "id": 236,
+            "sport_id": 1,
+            "country_id": 462,
+            "venue_id": 338817,
+            "gender": "male",
+            "name": "Brentford",
+            "short_code": "BRE",
+            "image_path": "https://cdn.sportmonks.com/images/soccer/teams/12/236.png",
+            "founded": 1889,
+            "type": "domestic",
+            "placeholder": false,
+            "last_played_at": "2026-08-08 15:00:00",
+            "meta": {
+              "location": "home",
+              "winner": false,
+              "position": 7
+            }
+          }
+        ],
+        "state": {
+          "id": 5,
+          "state": "FT",
+          "name": "Full Time",
+          "short_name": "FT",
+          "developer_name": "FT"
+        }
+      },
+      {
+        "id": 19427147,
+        "sport_id": 1,
+        "league_id": 8,
+        "season_id": 25583,
+        "stage_id": 77476879,
+        "group_id": null,
+        "aggregate_id": null,
+        "round_id": 372144,
+        "state_id": 5,
+        "venue_id": 321614,
+        "name": "Chelsea vs Burnley",
+        "starting_at": "2026-02-21 15:00:00",
+        "result_info": "Game ended in draw.",
+        "leg": "1/1",
+        "details": null,
+        "length": 90,
+        "placeholder": false,
+        "has_odds": true,
+        "has_premium_odds": true,
+        "starting_at_timestamp": 1771686000,
+        "participants": [
+          {
+            "id": 27,
+            "sport_id": 1,
+            "country_id": 462,
+            "venue_id": 200,
+            "gender": "male",
+            "name": "Burnley",
+            "short_code": "BUR",
+            "image_path": "https://cdn.sportmonks.com/images/soccer/teams/27/27.png",
+            "founded": 1882,
+            "type": "domestic",
+            "placeholder": false,
+            "last_played_at": "2026-08-08 14:00:00",
+            "meta": {
+              "location": "away",
+              "winner": false,
+              "position": 19
+            }
+          },
+          {
+            "id": 18,
+            "sport_id": 1,
+            "country_id": 462,
+            "venue_id": 321614,
+            "gender": "male",
+            "name": "Chelsea",
+            "short_code": "CHE",
+            "image_path": "https://cdn.sportmonks.com/images/soccer/teams/18/18.png",
+            "founded": 1905,
+            "type": "domestic",
+            "placeholder": false,
+            "last_played_at": "2026-08-09 12:00:00",
+            "meta": {
+              "location": "home",
+              "winner": false,
+              "position": 5
+            }
+          }
+        ],
+        "state": {
+          "id": 5,
+          "state": "FT",
+          "name": "Full Time",
+          "short_name": "FT",
+          "developer_name": "FT"
+        }
+      }
+    ],
+    "pagination": {
+      "count": 25,
+      "per_page": 25,
+      "has_more": true,
+      "current_page": 1,
+      "next_page": "https://api.sportmonks.com/v3/football/fixtures?filters=fixtureSeasons%3A25583&include=participants%3Bstate&page=2",
+      "next_cursor": "https://api.sportmonks.com/v3/football/fixtures?filters=fixtureSeasons%3A25583&include=participants%3Bstate&cursor=WzEsMjUsWzE5NDI3MTcwXSxbWyJzcG9ydHMuZml4dHVyZXMuaWQiLDBdXV0"
+    },
+    "subscription": [
+      {
+        "meta": {
+          "current_timestamp": 1786468506,
+          "next_billing_cycle": "2026-08-25T18:05:20 UTC"
+        },
+        "plans": [
+          {
+            "plan": "Starter - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Advanced"
+          }
+        ],
+        "add_ons": [
+          {
+            "add_on": "Historical Data",
+            "sport": "Football",
+            "category": "Historical data"
+          },
+          {
+            "add_on": "Match Facts - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Match facts"
+          }
+        ],
+        "widgets": [],
+        "bundles": []
+      }
+    ],
+    "rate_limit": {
+      "resets_in_seconds": 3291,
+      "remaining": 1997,
+      "requested_entity": "Fixture"
+    },
+    "timezone": "UTC"
+  },
+  "fixture_detail": {
+    "data": {
+      "id": 19427146,
+      "sport_id": 1,
+      "league_id": 8,
+      "season_id": 25583,
+      "stage_id": 77476879,
+      "group_id": null,
+      "aggregate_id": null,
+      "round_id": 372144,
+      "state_id": 5,
+      "venue_id": 338817,
+      "name": "Brentford vs Brighton & Hove Albion",
+      "starting_at": "2026-02-21 15:00:00",
+      "result_info": "Brighton & Hove Albion won after full-time.",
+      "leg": "1/1",
+      "details": null,
+      "length": 90,
+      "placeholder": false,
+      "has_odds": true,
+      "has_premium_odds": true,
+      "starting_at_timestamp": 1771686000,
+      "lineups": [
+        {
+          "id": 14672137130,
+          "sport_id": 1,
+          "fixture_id": 19427146,
+          "player_id": 37257596,
+          "team_id": 78,
+          "position_id": 24,
+          "formation_field": "1:1",
+          "type_id": 11,
+          "formation_position": 1,
+          "player_name": "Bart Verbruggen",
+          "jersey_number": 1,
+          "details": [
+            {
+              "id": 1912221104,
+              "fixture_id": 19427146,
+              "player_id": 37257596,
+              "team_id": 78,
+              "lineup_id": 14672137130,
+              "type_id": 116,
+              "data": {
+                "value": 28
+              },
+              "type": {
+                "id": 116,
+                "name": "Accurate Passes",
+                "code": "accurate-passes",
+                "developer_name": "ACCURATE_PASSES",
+                "model_type": "statistic",
+                "stat_group": "overall"
+              }
+            },
+            {
+              "id": 1912221103,
+              "fixture_id": 19427146,
+              "player_id": 37257596,
+              "team_id": 78,
+              "lineup_id": 14672137130,
+              "type_id": 80,
+              "data": {
+                "value": 44
+              },
+              "type": {
+                "id": 80,
+                "name": "Passes",
+                "code": "passes",
+                "developer_name": "PASSES",
+                "model_type": "statistic",
+                "stat_group": "overall"
+              }
+            }
+          ]
+        },
+        {
+          "id": 14672137131,
+          "sport_id": 1,
+          "fixture_id": 19427146,
+          "player_id": 2461,
+          "team_id": 78,
+          "position_id": 25,
+          "formation_field": "2:2",
+          "type_id": 11,
+          "formation_position": 4,
+          "player_name": "Lewis Dunk",
+          "jersey_number": 5,
+          "details": [
+            {
+              "id": 1911889194,
+              "fixture_id": 19427146,
+              "player_id": 2461,
+              "team_id": 78,
+              "lineup_id": 14672137131,
+              "type_id": 40,
+              "data": {
+                "value": true
+              },
+              "type": {
+                "id": 40,
+                "name": "Captain",
+                "code": "captain",
+                "developer_name": "CAPTAIN",
+                "model_type": "statistic",
+                "stat_group": "overall"
+              }
+            },
+            {
+              "id": 1912221106,
+              "fixture_id": 19427146,
+              "player_id": 2461,
+              "team_id": 78,
+              "lineup_id": 14672137131,
+              "type_id": 116,
+              "data": {
+                "value": 35
+              },
+              "type": {
+                "id": 116,
+                "name": "Accurate Passes",
+                "code": "accurate-passes",
+                "developer_name": "ACCURATE_PASSES",
+                "model_type": "statistic",
+                "stat_group": "overall"
+              }
+            }
+          ]
+        }
+      ],
+      "events": [
+        {
+          "id": 152895855,
+          "fixture_id": 19427146,
+          "period_id": 6526069,
+          "participant_id": 78,
+          "type_id": 14,
+          "section": "event",
+          "player_id": 37563876,
+          "related_player_id": null,
+          "player_name": "Diego G\u00f3mez",
+          "related_player_name": null,
+          "result": "0-1",
+          "info": "Left foot shot",
+          "addition": "1st Goal",
+          "minute": 30,
+          "extra_minute": null,
+          "injured": null,
+          "on_bench": false,
+          "coach_id": null,
+          "sub_type_id": 1521,
+          "detailed_period_id": 6526069,
+          "rescinded": null,
+          "sort_order": 1
+        },
+        {
+          "id": 153038436,
+          "fixture_id": 19427146,
+          "period_id": 6526069,
+          "participant_id": 78,
+          "type_id": 14,
+          "section": "event",
+          "player_id": 627,
+          "related_player_id": null,
+          "player_name": "Danny Welbeck",
+          "related_player_name": null,
+          "result": "0-2",
+          "info": "Right foot shot",
+          "addition": "2nd Goal",
+          "minute": 45,
+          "extra_minute": 1,
+          "injured": null,
+          "on_bench": false,
+          "coach_id": null,
+          "sub_type_id": 1522,
+          "detailed_period_id": 6526069,
+          "rescinded": null,
+          "sort_order": 2
+        }
+      ],
+      "statistics": [
+        {
+          "id": 751442778,
+          "fixture_id": 19427146,
+          "type_id": 34,
+          "participant_id": 78,
+          "data": {
+            "value": 4
+          },
+          "location": "away",
+          "type": {
+            "id": 34,
+            "name": "Corners",
+            "code": "corners",
+            "developer_name": "CORNERS",
+            "model_type": "statistic",
+            "stat_group": "offensive"
+          }
+        },
+        {
+          "id": 751442779,
+          "fixture_id": 19427146,
+          "type_id": 34,
+          "participant_id": 236,
+          "data": {
+            "value": 6
+          },
+          "location": "home",
+          "type": {
+            "id": 34,
+            "name": "Corners",
+            "code": "corners",
+            "developer_name": "CORNERS",
+            "model_type": "statistic",
+            "stat_group": "offensive"
+          }
+        }
+      ],
+      "participants": [
+        {
+          "id": 78,
+          "sport_id": 1,
+          "country_id": 462,
+          "venue_id": 480,
+          "gender": "male",
+          "name": "Brighton & Hove Albion",
+          "short_code": "BHA",
+          "image_path": "https://cdn.sportmonks.com/images/soccer/teams/14/78.png",
+          "founded": 1901,
+          "type": "domestic",
+          "placeholder": false,
+          "last_played_at": "2026-08-08 14:00:00",
+          "meta": {
+            "location": "away",
+            "winner": true,
+            "position": 14
+          }
+        },
+        {
+          "id": 236,
+          "sport_id": 1,
+          "country_id": 462,
+          "venue_id": 338817,
+          "gender": "male",
+          "name": "Brentford",
+          "short_code": "BRE",
+          "image_path": "https://cdn.sportmonks.com/images/soccer/teams/12/236.png",
+          "founded": 1889,
+          "type": "domestic",
+          "placeholder": false,
+          "last_played_at": "2026-08-08 15:00:00",
+          "meta": {
+            "location": "home",
+            "winner": false,
+            "position": 7
+          }
+        }
+      ]
+    },
+    "subscription": [
+      {
+        "meta": {
+          "current_timestamp": 1786468507,
+          "next_billing_cycle": "2026-08-25T18:05:20 UTC"
+        },
+        "plans": [
+          {
+            "plan": "Starter - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Advanced"
+          }
+        ],
+        "add_ons": [
+          {
+            "add_on": "Historical Data",
+            "sport": "Football",
+            "category": "Historical data"
+          },
+          {
+            "add_on": "Match Facts - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Match facts"
+          }
+        ],
+        "widgets": [],
+        "bundles": []
+      }
+    ],
+    "rate_limit": {
+      "resets_in_seconds": 3290,
+      "remaining": 1996,
+      "requested_entity": "Fixture"
+    },
+    "timezone": "UTC"
+  },
+  "types": {
+    "data": [
+      {
+        "id": 1,
+        "name": "1st Half",
+        "code": "1st-half",
+        "developer_name": "1ST_HALF",
+        "model_type": "period",
+        "stat_group": null
+      },
+      {
+        "id": 2,
+        "name": "2nd Half",
+        "code": "2nd-half",
+        "developer_name": "2ND_HALF",
+        "model_type": "period",
+        "stat_group": null
+      }
+    ],
+    "pagination": {
+      "count": 25,
+      "per_page": 25,
+      "has_more": true,
+      "current_page": 1,
+      "next_page": "https://api.sportmonks.com/v3/core/types?page=2",
+      "next_cursor": "https://api.sportmonks.com/v3/core/types?cursor=WzEsMjUsWzI2XSxbWyJzcG9ydHMudHlwZXMuaWQiLDBdXV0"
+    },
+    "subscription": [
+      {
+        "meta": {
+          "current_timestamp": 1786468508,
+          "next_billing_cycle": "2026-08-25T18:05:20 UTC"
+        },
+        "plans": [
+          {
+            "plan": "Starter - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Advanced"
+          }
+        ],
+        "add_ons": [
+          {
+            "add_on": "Historical Data",
+            "sport": "Football",
+            "category": "Historical data"
+          },
+          {
+            "add_on": "Match Facts - Trialing until 2026-08-25 18:05:20",
+            "sport": "Football",
+            "category": "Match facts"
+          }
+        ],
+        "widgets": [],
+        "bundles": []
+      }
+    ],
+    "rate_limit": {
+      "resets_in_seconds": 3505,
+      "remaining": 1998,
+      "requested_entity": "Type"
+    },
+    "timezone": "UTC"
+  },
+  "expected_lineups": {
+    "error": 403,
+    "body": "{\"message\":\"You do not have access to this endpoint\",\"link\":\"https:\\/\\/docs.sportmonks.com\\/football\\/api\\/response-codes\\/other-exceptions\",\"code\":5007}"
+  }
+}

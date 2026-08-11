@@ -149,35 +149,45 @@ export default async function DraftPage({
     available = available.eq("club_id", filters.club);
   }
 
-  // Default to draft rank. Drafts happen before a ball is kicked, when form and
-  // projections have nothing to work from — but FPL's price is their own
-  // valuation of a player's season, set in advance and well calibrated.
-  const sort =
-    filters.sort === "name"
-      ? "name"
-      : filters.sort === "form"
-        ? "form"
-        : filters.sort === "owned"
-          ? "owned"
-          : "value";
+  // Default to draft rank: what each player would have scored in THIS league
+  // last season, minus what a freely available player at their position would
+  // have scored. Raw points would put seven goalkeepers in the top twenty.
+  const sort = filters.sort === "name" ? "name" : filters.sort === "points" ? "points" : "value";
 
-  if (sort === "name") {
-    available = available.order("display_name");
-  } else if (sort === "form") {
-    available = available.order("form", { ascending: false, nullsFirst: false });
-  } else if (sort === "owned") {
-    available = available.order("selected_by_percent", { ascending: false, nullsFirst: false });
-  } else {
-    available = available.order("price", { ascending: false, nullsFirst: false });
-  }
+  // Ranking lives in another table, and PostgREST can't order a query by a
+  // joined column. The whole league's ranking is only a few hundred small rows,
+  // so it's fetched once and the sort and paging happen here.
+  const { data: ranking } = await supabase
+    .from("draft_values")
+    .select("player_id, points, value_over_replacement, appearances")
+    .eq("league_id", id)
+    .returns<{
+      player_id: string;
+      points: number;
+      value_over_replacement: number | null;
+      appearances: number;
+    }[]>();
 
-  const offset = (page - 1) * PAGE_SIZE;
-  const { data: players, count: availableCount } = await available
-    .range(offset, offset + PAGE_SIZE - 1)
+  const rankBy = new Map((ranking ?? []).map((row) => [row.player_id, row]));
+
+  const { data: allAvailable, count: availableCount } = await available
+    .order("display_name")
+    .limit(1000)
     .returns<PlayerRow[]>();
 
-  const totalAvailable = availableCount ?? 0;
-  const lastPage = Math.max(1, Math.ceil(totalAvailable / PAGE_SIZE));
+  const sorted = (allAvailable ?? []).slice().sort((a, b) => {
+    if (sort === "name") return a.display_name.localeCompare(b.display_name);
+
+    const key = sort === "points" ? "points" : "value_over_replacement";
+    const left = Number(rankBy.get(a.id)?.[key] ?? -9999);
+    const right = Number(rankBy.get(b.id)?.[key] ?? -9999);
+    return right - left;
+  });
+
+  const totalAvailable = availableCount ?? sorted.length;
+  const lastPage = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const offset = (page - 1) * PAGE_SIZE;
+  const players = sorted.slice(offset, offset + PAGE_SIZE);
 
   const myRoster = madePicks.filter((pick) => pick.fantasy_team_id === myTeam?.id);
 
@@ -324,8 +334,7 @@ export default async function DraftPage({
             </select>
             <select name="sort" defaultValue={sort} suppressHydrationWarning className="select">
               <option value="value">Draft rank</option>
-              <option value="owned">Most owned</option>
-              <option value="form">Form</option>
+              <option value="points">Last season points</option>
               <option value="name">Name</option>
             </select>
             <button className="btn btn-ghost">Filter</button>
@@ -335,7 +344,9 @@ export default async function DraftPage({
             <span className="dim">
               {totalAvailable} available
               {lastPage > 1 ? ` · page ${page} of ${lastPage}` : ""}
-              {sort === "value" ? " · ranked by FPL price" : ""}
+              {sort === "value"
+                ? " · ranked by last season's points above replacement, in this league's scoring"
+                : ""}
             </span>
             <span className="numeric flex gap-3 text-xs">
               {POSITIONS.map((value) => (
@@ -364,10 +375,22 @@ export default async function DraftPage({
                 </Link>
                 <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
                 <span
-                  className="numeric w-12 text-right text-sm"
-                  title="FPL's price — their valuation of this player's season. The best guide available before any matches are played."
+                  className="numeric w-16 text-right text-sm"
+                  title={
+                    rankBy.get(player.id)
+                      ? `${rankBy.get(player.id)?.points} points last season over ${rankBy.get(player.id)?.appearances} appearances, under this league's rules`
+                      : "No data from last season"
+                  }
                 >
-                  {player.price !== null ? `£${(player.price / 10).toFixed(1)}` : "–"}
+                  {rankBy.get(player.id)?.value_over_replacement != null ? (
+                    <>
+                      <span className="dim">{rankBy.get(player.id)?.points}</span>{" "}
+                      {(rankBy.get(player.id)?.value_over_replacement ?? 0) > 0 ? "+" : ""}
+                      {rankBy.get(player.id)?.value_over_replacement}
+                    </>
+                  ) : (
+                    "–"
+                  )}
                 </span>
                 <form action={makePick} suppressHydrationWarning>
                   <input type="hidden" name="league_id" value={league.id} />

@@ -29,6 +29,9 @@ class Settings(BaseSettings):
 
     # Email reminders. Without an API key the reminder job is a no-op, so
     # everything else runs fine with email unconfigured.
+    # Sportmonks, evaluated alongside FPL during the trial.
+    sportmonks_token: str | None = None
+
     resend_api_key: str | None = None
     reminder_from: str = "FatBoysFantasy <noreply@fatboysfantasy.com>"
     site_url: str = "https://fatboysfantasy.com"

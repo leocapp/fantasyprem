@@ -57,9 +57,31 @@ class SupabaseRest:
         self._client.close()
 
     def select(self, table: str, **params: str) -> list[dict[str, Any]]:
-        response = self._client.get(f"/{table}", params=params)
-        response.raise_for_status()
-        return response.json()
+        """Read every matching row, following PostgREST's row limit.
+
+        PostgREST caps a response at 1,000 rows and says nothing about it — the
+        request simply returns fewer rows than exist. A season of match stats is
+        around 9,000, so without paging the caller silently works from a
+        fraction of the data and every number it produces is wrong.
+        """
+        page_size = 1000
+        offset = 0
+        rows: list[dict[str, Any]] = []
+
+        while True:
+            response = self._client.get(
+                f"/{table}",
+                params=params,
+                headers={"Range-Unit": "items", "Range": f"{offset}-{offset + page_size - 1}"},
+            )
+            response.raise_for_status()
+            batch = response.json()
+            rows.extend(batch)
+
+            if len(batch) < page_size:
+                return rows
+
+            offset += page_size
 
     def update(self, table: str, values: dict[str, Any], **filters: str) -> None:
         """Patch existing rows. Use this rather than upsert for partial changes:
