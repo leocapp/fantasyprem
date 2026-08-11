@@ -115,7 +115,9 @@ python -m app.ingest.synthetic 3 # fabricate one gameweek (development only)
 In production these run hourly via GitHub Actions, so points appear within an
 hour of a match finishing.
 
-Data comes from Sportmonks, which needs `SPORTMONKS_API_KEY` in `backend/.env`.
+Data comes from Sportmonks, which needs `SPORTMONKS_TOKEN` in `backend/.env`
+locally and as a GitHub repository secret for the scheduled runs — the ingestion
+skips itself and exits non-zero without it.
 The Fantasy Premier League API was the original source and `app.ingest.fpl` is
 kept as the revert path, but it refuses to run without `ALLOW_FPL_INGEST=1`:
 its rows are keyed on FPL ids, which cannot collide with Sportmonks rows, so
