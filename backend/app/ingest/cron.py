@@ -2,12 +2,13 @@
 
     python -m app.ingest.cron
 
-Four steps, in order:
+Five steps, in order:
 
 1. Refresh reference data — squads, gameweek deadlines, fixture status.
 2. Ingest match stats for played gameweeks and score every league.
 3. Project expected performance for the next two gameweeks.
 4. Settle any trades whose veto window has closed.
+5. Email managers who haven't set a lineup before the deadline.
 
 Safe to run repeatedly: every step is an upsert or a no-op when there's
 nothing to do. Designed for GitHub Actions, but any scheduler works.
@@ -18,7 +19,7 @@ from __future__ import annotations
 import sys
 
 from app.config import get_settings
-from app.ingest import fpl, projections, stats
+from app.ingest import fpl, projections, reminders, stats
 from app.ingest.supabase_rest import SupabaseRest
 
 
@@ -47,10 +48,15 @@ def main() -> int:
     if code != 0:
         return code
 
-    print("[4/4] Settling trades past their veto window")
+    print("[4/5] Settling trades past their veto window")
     with SupabaseRest(settings.supabase_url, settings.supabase_service_role_key) as db:
         settled = db.rpc("execute_all_due_trades", {})
         print(f"  settled {settled} trade(s)")
+
+    print("[5/5] Sending lineup reminders")
+    code = reminders.main()
+    if code != 0:
+        return code
 
     return 0
 

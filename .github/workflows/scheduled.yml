@@ -55,4 +55,6 @@ jobs:
           ENVIRONMENT: production
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Optional: without it the reminder step is a no-op.
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: python -m app.ingest.cron

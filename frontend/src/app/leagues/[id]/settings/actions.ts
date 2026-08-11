@@ -26,6 +26,8 @@ export async function updateLeagueSettings(formData: FormData) {
       min_fwd: Number(formData.get("min_fwd")),
       // Unchecked checkboxes aren't submitted at all.
       carry_forward_lineups: formData.get("carry_forward_lineups") === "on",
+      email_reminders: formData.get("email_reminders") === "on",
+      reminder_hours_before: Number(formData.get("reminder_hours_before")) || 4,
     })
     .eq("id", leagueId);
 

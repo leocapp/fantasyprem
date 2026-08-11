@@ -50,6 +50,7 @@ export async function updateProfile(formData: FormData) {
     .update({
       display_name: String(formData.get("display_name") ?? "").trim() || null,
       bio: String(formData.get("bio") ?? "").trim() || null,
+      email_reminders: formData.get("email_reminders") === "on",
     })
     .eq("id", user.id);
 

@@ -69,6 +69,26 @@ type ScoreRow = {
   breakdown: Record<string, number>;
 };
 
+type SeasonStatsRow = {
+  appearances: number;
+  full_games: number;
+  minutes: number;
+  goals: number;
+  assists: number;
+  clean_sheets: number;
+  saves: number;
+  yellow_cards: number;
+  red_cards: number;
+  bonus: number;
+};
+
+type SeasonPointsRow = {
+  total_points: number;
+  best_gameweek: number | null;
+  gameweeks_scored: number;
+  gameweeks_elapsed: number;
+};
+
 type ExpectationRow = {
   gameweek_id: string;
   minutes: number;
@@ -164,6 +184,24 @@ export default async function PlayerDetailPage({
 
   const scoreBy = new Map((scores ?? []).map((row) => [row.gameweek_id, row]));
 
+  const [{ data: seasonStats }, { data: seasonPoints }] = await Promise.all([
+    supabase
+      .from("player_season_stats")
+      .select(
+        "appearances, full_games, minutes, goals, assists, clean_sheets, saves, yellow_cards, red_cards, bonus",
+      )
+      .eq("player_id", playerId)
+      .eq("season_id", league.season_id)
+      .maybeSingle<SeasonStatsRow>(),
+
+    supabase
+      .from("player_league_season_points")
+      .select("total_points, best_gameweek, gameweeks_scored, gameweeks_elapsed")
+      .eq("league_id", id)
+      .eq("player_id", playerId)
+      .maybeSingle<SeasonPointsRow>(),
+  ]);
+
   // Our own projection for upcoming gameweeks, plus the points those
   // expectations imply under this league's rules.
   const { data: expectations } = await supabase
@@ -256,6 +294,20 @@ export default async function PlayerDetailPage({
         .returns<StatRow[]>()
     : { data: [] };
 
+  // Season points by category, summed from every gameweek's stored breakdown.
+  // No extra query: the same rows that draw the gameweek strip.
+  const seasonBreakdown = (scores ?? []).reduce<Record<string, number>>((totals, row) => {
+    for (const [key, value] of Object.entries(row.breakdown ?? {})) {
+      if (key === "minutes") continue;
+      totals[key] = (totals[key] ?? 0) + Number(value);
+    }
+    return totals;
+  }, {});
+
+  const seasonBreakdownRows = Object.entries(seasonBreakdown)
+    .filter(([, value]) => value !== 0)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+
   const score = selected ? scoreBy.get(selected.id) : undefined;
   const breakdown = Object.entries(score?.breakdown ?? {}).filter(
     ([key, value]) => key !== "minutes" && Number(value) !== 0,
@@ -287,6 +339,95 @@ export default async function PlayerDetailPage({
           </div>
         </div>
       </div>
+
+      {seasonStats && seasonStats.appearances > 0 ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <section className="card">
+            <h2 className="section-label">Season so far · on the pitch</h2>
+            <dl className="mt-3 space-y-1 text-sm">
+              {(
+                [
+                  [
+                    "Appearances",
+                    `${seasonStats.appearances} of ${seasonPoints?.gameweeks_elapsed ?? 0}`,
+                  ],
+                  ["Started (60+ mins)", seasonStats.full_games],
+                  ["Minutes", seasonStats.minutes],
+                  [
+                    "Minutes per appearance",
+                    seasonStats.appearances > 0
+                      ? Math.round(seasonStats.minutes / seasonStats.appearances)
+                      : "–",
+                  ],
+                  ["Goals", seasonStats.goals],
+                  ["Assists", seasonStats.assists],
+                  ...(player.position === "GK" || player.position === "DEF"
+                    ? ([
+                        ["Clean sheets", seasonStats.clean_sheets],
+                        ...(player.position === "GK"
+                          ? ([["Saves", seasonStats.saves]] as const)
+                          : []),
+                      ] as const)
+                    : []),
+                  ["Bonus points", seasonStats.bonus],
+                  [
+                    "Cards",
+                    `${seasonStats.yellow_cards}Y${
+                      seasonStats.red_cards ? ` ${seasonStats.red_cards}R` : ""
+                    }`,
+                  ],
+                ] as const
+              ).map(([label, value]) => (
+                <div key={label} className="flex justify-between gap-2">
+                  <dt className="dim">{label}</dt>
+                  <dd className="numeric">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+
+          <section className="card">
+            <div className="flex items-baseline justify-between">
+              <h2 className="section-label">Season so far · points</h2>
+              <span className="numeric text-2xl font-bold">
+                {seasonPoints?.total_points ?? 0}
+              </span>
+            </div>
+
+            <dl className="mt-3 space-y-1 text-sm">
+              {seasonBreakdownRows.map(([key, value]) => (
+                <div key={key} className="flex justify-between gap-2">
+                  <dt className="dim">{BREAKDOWN_LABELS[key] ?? key}</dt>
+                  <dd
+                    className={`numeric ${value < 0 ? "text-[var(--danger)]" : ""}`}
+                  >
+                    {value > 0 ? "+" : ""}
+                    {value}
+                  </dd>
+                </div>
+              ))}
+
+              <div className="flex justify-between gap-2 border-t border-[var(--border)] pt-1">
+                <dt className="dim">Per gameweek</dt>
+                <dd className="numeric">
+                  {seasonPoints && seasonPoints.gameweeks_elapsed > 0
+                    ? (seasonPoints.total_points / seasonPoints.gameweeks_elapsed).toFixed(1)
+                    : "–"}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="dim">Best gameweek</dt>
+                <dd className="numeric">{seasonPoints?.best_gameweek ?? "–"}</dd>
+              </div>
+            </dl>
+
+            <p className="mt-2 text-xs dim">
+              Per gameweek counts every week of the season, including ones they missed — an
+              unavailable player costs you those weeks.
+            </p>
+          </section>
+        </div>
+      ) : null}
 
       {upcoming.length > 0 ? (
         <section>

@@ -27,6 +27,8 @@ type LeagueRow = {
   min_mid: number;
   min_fwd: number;
   carry_forward_lineups: boolean;
+  email_reminders: boolean;
+  reminder_hours_before: number;
   commissioner_id: string;
 };
 
@@ -82,7 +84,7 @@ export default async function SettingsPage({
   const { data: league } = await supabase
     .from("leagues")
     .select(
-      "id, name, status, join_code, max_teams, roster_size, min_gk, min_def, min_mid, min_fwd, carry_forward_lineups, commissioner_id",
+      "id, name, status, join_code, max_teams, roster_size, min_gk, min_def, min_mid, min_fwd, carry_forward_lineups, email_reminders, reminder_hours_before, commissioner_id",
     )
     .eq("id", id)
     .maybeSingle<LeagueRow>();
@@ -254,6 +256,37 @@ export default async function SettingsPage({
                 they no longer own. Off means they score zero.
               </span>
             </span>
+          </label>
+
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              name="email_reminders"
+              defaultChecked={league.email_reminders}
+              className="mt-1 h-4 w-4 accent-emerald-600"
+              suppressHydrationWarning
+            />
+            <span>
+              Email lineup reminders
+              <span className="block text-xs dim">
+                Managers with no lineup set get one email before the deadline. Off here disables
+                them for everyone in the league, whatever their own setting.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-center gap-3 text-sm">
+            <span className="muted">Send</span>
+            <input
+              name="reminder_hours_before"
+              type="number"
+              min={1}
+              max={48}
+              defaultValue={league.reminder_hours_before}
+              className="input w-20"
+              suppressHydrationWarning
+            />
+            <span className="muted">hours before the deadline</span>
           </label>
 
           <button className="btn btn-primary self-start">Save league</button>

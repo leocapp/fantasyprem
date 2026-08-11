@@ -11,6 +11,7 @@ type ProfileRow = {
   display_name: string | null;
   bio: string | null;
   avatar_url: string | null;
+  email_reminders: boolean;
 };
 
 type MembershipRow = {
@@ -37,7 +38,7 @@ export default async function AccountPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, username, display_name, bio, avatar_url")
+    .select("id, username, display_name, bio, avatar_url, email_reminders")
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
 
@@ -121,6 +122,23 @@ export default async function AccountPage({
               className="input resize-y"
               suppressHydrationWarning
             />
+          </label>
+
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              name="email_reminders"
+              defaultChecked={profile?.email_reminders ?? true}
+              className="mt-1 h-4 w-4 accent-emerald-600"
+              suppressHydrationWarning
+            />
+            <span>
+              Email me lineup reminders
+              <span className="block text-xs dim">
+                One email before a deadline if you haven&apos;t set a lineup. Commissioners can
+                also turn these off for a whole league.
+              </span>
+            </span>
           </label>
 
           <button className="btn btn-primary self-start">Save profile</button>
