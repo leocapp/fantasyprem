@@ -1,10 +1,15 @@
 """Ingest Premier League reference data from the Fantasy Premier League API.
 
-    python -m app.ingest.fpl
+    ALLOW_FPL_INGEST=1 python -m app.ingest.fpl
 
-Pulls clubs, gameweeks, players and fixtures into Supabase. Safe to re-run:
-every write is an upsert keyed on the provider's own id, so running it again
-refreshes prices, injuries, scores and fixture status without duplicating rows.
+RETIRED. Sportmonks is the live provider (app.ingest.sportmonks); this module is
+kept only as the revert path if that arrangement doesn't work out. It refuses to
+run without ALLOW_FPL_INGEST set — see the note on the guard below for why.
+
+Pulls clubs, gameweeks, players and fixtures into Supabase. Safe to re-run
+against an FPL-shaped database: every write is an upsert keyed on the provider's
+own id, so running it again refreshes prices, injuries, scores and fixture
+status without duplicating rows.
 
 These endpoints are public but undocumented and unofficial. They can change
 shape without notice, so failures here are expected occasionally.
@@ -12,6 +17,7 @@ shape without notice, so failures here are expected occasionally.
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any
 
@@ -200,7 +206,34 @@ def fixture_rows(
     return rows
 
 
+# Upserting on external_id can't collide with a Sportmonks row keyed on
+# sportmonks_id, because a unique constraint doesn't apply to NULLs. Running
+# this against the current database wouldn't error or overwrite anything — it
+# would quietly build a second, parallel copy of every club, player and fixture
+# alongside the real one. That's precisely what migration 0033 had to delete,
+# and it went unnoticed for weeks because the two halves never referenced each
+# other. A deliberate env var is the difference between reverting and relapsing.
+GUARD_ENV = "ALLOW_FPL_INGEST"
+
+GUARD_MESSAGE = f"""\
+Refusing to run: FPL is no longer the active data provider.
+
+Sportmonks is live (python -m app.ingest.sportmonks). This job writes rows keyed
+on FPL ids, which do not collide with Sportmonks rows — so running it against
+the current database would silently duplicate every club, player and fixture
+rather than failing.
+
+If you really are reverting to FPL, delete the Sportmonks data first, then:
+
+    {GUARD_ENV}=1 python -m app.ingest.fpl
+"""
+
+
 def main() -> int:
+    if not os.environ.get(GUARD_ENV):
+        print(GUARD_MESSAGE, file=sys.stderr)
+        return 1
+
     settings = get_settings()
 
     if not settings.supabase_url or not settings.supabase_service_role_key:

@@ -25,7 +25,7 @@ type RosterRow = {
     position: string;
     availability: string | null;
     news: string | null;
-    chance_of_playing: number | null;
+    expected_return: string | null;
     clubs: { short_name: string } | null;
   } | null;
 };
@@ -92,7 +92,7 @@ export default async function TradesPage({
   const { data: rosters } = await supabase
     .from("roster_entries")
     .select(
-      "player_id, fantasy_team_id, players (display_name, position, availability, news, chance_of_playing, clubs (short_name))",
+      "player_id, fantasy_team_id, players (display_name, position, availability, news, expected_return, clubs (short_name))",
     )
     .eq("league_id", id)
     .is("dropped_at", null)
@@ -228,7 +228,7 @@ export default async function TradesPage({
                             <AvailabilityFlag
                               availability={row.players?.availability}
                               news={row.players?.news}
-                              chance={row.players?.chance_of_playing}
+                              expectedReturn={row.players?.expected_return}
                             />
                           </span>
                           <span className="text-xs dim">{row.players?.clubs?.short_name}</span>
@@ -257,7 +257,7 @@ export default async function TradesPage({
                             <AvailabilityFlag
                               availability={row.players?.availability}
                               news={row.players?.news}
-                              chance={row.players?.chance_of_playing}
+                              expectedReturn={row.players?.expected_return}
                             />
                           </span>
                           <span className="text-xs dim">{row.players?.clubs?.short_name}</span>

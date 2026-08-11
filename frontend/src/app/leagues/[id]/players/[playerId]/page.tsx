@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import AvailabilityFlag from "@/components/AvailabilityFlag";
 import BackLink from "@/components/BackLink";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import ScoringKey, { type ScoringRule } from "@/components/ScoringKey";
 import { formatDateTime } from "@/lib/datetime";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,18 +20,12 @@ type PlayerRow = {
   club_id: string | null;
   availability: string | null;
   news: string | null;
-  chance_of_playing: number | null;
-  ep_next: number | null;
-  form: number | null;
-  points_per_game: number | null;
-  xg_per_90: number | null;
-  xa_per_90: number | null;
-  xgi_per_90: number | null;
-  xgc_per_90: number | null;
+  expected_return: string | null;
+  games_missed: number | null;
   clubs: { name: string; short_name: string } | null;
 };
 
-type GameweekRow = { id: string; number: number; status: string };
+type GameweekRow = { id: string; number: number; status: string; deadline_at: string };
 
 const MINIMUM_MATCHES = 3;
 
@@ -60,7 +55,6 @@ type StatRow = {
   saves: number;
   yellow_cards: number;
   red_cards: number;
-  bonus: number;
 };
 
 type ScoreRow = {
@@ -79,7 +73,6 @@ type SeasonStatsRow = {
   saves: number;
   yellow_cards: number;
   red_cards: number;
-  bonus: number;
 };
 
 type SeasonPointsRow = {
@@ -113,7 +106,6 @@ const STAT_LABELS: [keyof StatRow, string][] = [
   ["own_goals", "Own goals"],
   ["yellow_cards", "Yellow cards"],
   ["red_cards", "Red cards"],
-  ["bonus", "Bonus"],
 ];
 
 const BREAKDOWN_LABELS: Record<string, string> = {
@@ -128,7 +120,6 @@ const BREAKDOWN_LABELS: Record<string, string> = {
   own_goals: "Own goals",
   yellow_cards: "Yellow cards",
   red_cards: "Red cards",
-  bonus: "Bonus",
   shots_on_target: "Shots on target",
   key_passes: "Key passes",
   tackles: "Tackles",
@@ -167,7 +158,7 @@ export default async function PlayerDetailPage({
   const { data: player } = await supabase
     .from("players")
     .select(
-      "id, display_name, first_name, last_name, position, photo_url, club_id, availability, news, chance_of_playing, ep_next, form, points_per_game, xg_per_90, xa_per_90, xgi_per_90, xgc_per_90, clubs (name, short_name)",
+      "id, display_name, first_name, last_name, position, photo_url, club_id, availability, news, expected_return, games_missed, clubs (name, short_name)",
     )
     .eq("id", playerId)
     .maybeSingle<PlayerRow>();
@@ -176,7 +167,7 @@ export default async function PlayerDetailPage({
 
   const { data: gameweeks } = await supabase
     .from("gameweeks")
-    .select("id, number, status")
+    .select("id, number, status, deadline_at")
     .eq("season_id", league.season_id)
     .order("number")
     .returns<GameweekRow[]>();
@@ -190,11 +181,20 @@ export default async function PlayerDetailPage({
 
   const scoreBy = new Map((scores ?? []).map((row) => [row.gameweek_id, row]));
 
+  // Both the rule naming this position and the catch-all are fetched; the
+  // component applies the same precedence the scoring function does.
+  const { data: scoringRules } = await supabase
+    .from("scoring_rules")
+    .select("stat_key, applies_to, points")
+    .eq("league_id", id)
+    .or(`applies_to.is.null,applies_to.eq.${player.position}`)
+    .returns<ScoringRule[]>();
+
   const [{ data: seasonStats }, { data: seasonPoints }] = await Promise.all([
     supabase
       .from("player_season_stats")
       .select(
-        "appearances, full_games, minutes, goals, assists, clean_sheets, saves, yellow_cards, red_cards, bonus",
+        "appearances, full_games, minutes, goals, assists, clean_sheets, saves, yellow_cards, red_cards",
       )
       .eq("player_id", playerId)
       .eq("season_id", league.season_id)
@@ -239,16 +239,35 @@ export default async function PlayerDetailPage({
     .sort((a, b) => a - b)
     .slice(0, 2);
 
-  const upcoming = (gameweeks ?? [])
-    .filter((row) =>
-      nextNumbers.length > 0 ? nextNumbers.includes(row.number) : row.status !== "complete",
-    )
-    .slice(0, 2)
-    .map((gameweek) => ({
-      gameweek,
-      expectation: (expectations ?? []).find((row) => row.gameweek_id === gameweek.id),
-    }))
-    .filter((row) => row.expectation);
+  const now = Date.now();
+
+  // Before a league's schedule exists — during setup, or between seasons — fall
+  // back to the calendar, and then to whichever gameweeks we actually hold a
+  // projection for. The projection job only writes rows for gameweeks still to
+  // come, so that last fallback can't surface a stale one.
+  const withExpectation = (rows: GameweekRow[]) =>
+    rows
+      .map((gameweek) => ({
+        gameweek,
+        expectation: (expectations ?? []).find((row) => row.gameweek_id === gameweek.id),
+      }))
+      .filter((row) => row.expectation);
+
+  const byLeagueSchedule = withExpectation(
+    (gameweeks ?? []).filter((row) => nextNumbers.includes(row.number)),
+  );
+
+  const byCalendar = withExpectation(
+    (gameweeks ?? []).filter((row) => new Date(row.deadline_at).getTime() > now),
+  );
+
+  const upcoming = (
+    byLeagueSchedule.length > 0
+      ? byLeagueSchedule
+      : byCalendar.length > 0
+        ? byCalendar
+        : withExpectation(gameweeks ?? [])
+  ).slice(0, 2);
 
   const projectedPoints = await Promise.all(
     upcoming.map(async ({ gameweek }) => {
@@ -293,7 +312,7 @@ export default async function PlayerDetailPage({
     ? await supabase
         .from("player_match_stats")
         .select(
-          "fixture_id, minutes, goals, assists, clean_sheet, goals_conceded, own_goals, penalties_saved, penalties_missed, saves, yellow_cards, red_cards, bonus",
+          "fixture_id, minutes, goals, assists, clean_sheet, goals_conceded, own_goals, penalties_saved, penalties_missed, saves, yellow_cards, red_cards",
         )
         .eq("player_id", playerId)
         .in("fixture_id", fixtureIds)
@@ -332,14 +351,19 @@ export default async function PlayerDetailPage({
               {player.position} · {player.clubs?.name ?? "—"}
             </p>
             {player.availability && player.availability !== "a" ? (
-              <p className="mt-1">
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
                 <AvailabilityFlag
                   availability={player.availability}
                   news={player.news}
-                  chance={player.chance_of_playing}
+                  expectedReturn={player.expected_return}
                   showLabel
                 />
-                {player.news ? <span className="ml-2 text-xs muted">{player.news}</span> : null}
+                {player.news ? <span className="muted">{player.news}</span> : null}
+                {player.games_missed ? (
+                  <span className="dim">
+                    {player.games_missed} game{player.games_missed === 1 ? "" : "s"} missed
+                  </span>
+                ) : null}
               </p>
             ) : null}
           </div>
@@ -375,7 +399,6 @@ export default async function PlayerDetailPage({
                           : []),
                       ] as const)
                     : []),
-                  ["Bonus points", seasonStats.bonus],
                   [
                     "Cards",
                     `${seasonStats.yellow_cards}Y${
@@ -453,6 +476,16 @@ export default async function PlayerDetailPage({
                     </span>
                   </div>
 
+                  {player.availability && player.availability !== "a" ? (
+                    <p className="mt-2 text-xs" style={{ color: "var(--warning)" }}>
+                      {player.expected_return &&
+                      new Date(`${player.expected_return}T00:00:00`) <
+                        new Date(gameweek.deadline_at)
+                        ? "Expected back before this deadline."
+                        : "Held out of this gameweek — the projection is reduced to match."}
+                    </p>
+                  ) : null}
+
                   {thin ? (
                     <p className="mt-2 text-xs dim">
                       Only {e.matches_observed} match
@@ -489,39 +522,20 @@ export default async function PlayerDetailPage({
           </div>
 
           <p className="mt-2 text-xs dim">
-            Mine, based on FPL&apos;s: expected minutes and per-90 rates from this player&apos;s own
-            matches, adjusted for fixture difficulty, then scored by this league&apos;s rules.
-            Expected minutes drive most of it — a projection is mostly a guess about whether
-            someone plays.
+            Expected minutes and per-90 rates from this player&apos;s own matches, shrunk toward
+            their position&apos;s average where the sample is thin, adjusted for the opponent, then
+            scored by this league&apos;s rules. Expected minutes drive most of it — a projection is
+            mostly a guess about whether someone plays.
           </p>
         </section>
-      ) : null}
-
-      <section>
-        <h2 className="section-label">Form and projection</h2>
-        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
-          {(
-            [
-              ["Projected (FPL)", player.ep_next],
-              ["Form", player.form],
-              ["Points per game", player.points_per_game],
-              ["xG per 90", player.xg_per_90],
-              ["xA per 90", player.xa_per_90],
-              ["xGC per 90", player.xgc_per_90],
-            ] as const
-          ).map(([label, value]) => (
-            <div key={label} className="flex justify-between gap-2">
-              <dt className="dim">{label}</dt>
-              <dd className="numeric">{value ?? "–"}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className="mt-2 text-xs dim">
-          Projection and form come from FPL and use FPL&apos;s scoring rules, not this
-          league&apos;s. xG and xA are Opta&apos;s underlying numbers — chances created and taken,
-          independent of whether they went in.
-        </p>
-      </section>
+      ) : (
+        <section>
+          <h2 className="section-label">Projection</h2>
+          <p className="mt-3 muted">
+            No projection yet — it&apos;s written nightly for the gameweeks still to come.
+          </p>
+        </section>
+      )}
 
       <section>
         <div className="flex items-baseline justify-between">
@@ -601,6 +615,12 @@ export default async function PlayerDetailPage({
           </p>
         </section>
       ) : null}
+
+      <ScoringKey
+        rules={scoringRules ?? []}
+        position={player.position}
+        leagueId={league.id}
+      />
 
       <section>
         <h2 className="section-label">Season</h2>

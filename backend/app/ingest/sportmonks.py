@@ -23,6 +23,7 @@ from __future__ import annotations
 import sys
 import time
 from collections import defaultdict
+from datetime import date, datetime, timezone
 from typing import Any
 
 import httpx
@@ -34,6 +35,11 @@ FOOTBALL = "https://api.sportmonks.com/v3/football"
 PREMIER_LEAGUE_ID = 8
 
 POSITIONS = {24: "GK", 25: "DEF", 26: "MID", 27: "FWD"}
+
+# Twenty clubs of roughly 25 players each is ~500. Anything under this means the
+# squad fetch came back short, and deactivating on a short response would empty
+# the player list, the draft board and every free agent page at once.
+MINIMUM_SQUAD_TOTAL = 300
 
 # Lineup entries are starters (11) or bench (12).
 STARTER_TYPE = 11
@@ -157,6 +163,52 @@ def player_rows(squad: list[dict[str, Any]], club_id: str) -> list[dict[str, Any
     return rows
 
 
+def absence_rows(
+    sidelined: list[dict[str, Any]],
+    player_ids: dict[str, str],
+    today: date,
+) -> list[dict[str, Any]]:
+    """Current injuries and suspensions for one club.
+
+    An entry counts as current when it isn't completed and either has no end
+    date — out indefinitely — or an end date still in the future. Historical
+    absences come back in the same list and have to be filtered out, or every
+    player who has ever been injured looks unavailable.
+    """
+    rows = []
+
+    for entry in sidelined:
+        if entry.get("completed"):
+            continue
+
+        end = entry.get("end_date")
+        if end:
+            try:
+                if date.fromisoformat(end) < today:
+                    continue
+            except ValueError:
+                pass
+
+        player_id = player_ids.get(str(entry.get("player_id")))
+        if not player_id:
+            continue
+
+        category = (entry.get("category") or "").lower()
+        description = (entry.get("type") or {}).get("name")
+
+        rows.append(
+            {
+                "id": player_id,
+                "availability": "s" if category == "suspension" else "i",
+                "news": description or category.title() or "Unavailable",
+                "expected_return": end,
+                "games_missed": entry.get("games_missed"),
+            }
+        )
+
+    return rows
+
+
 def stat_rows(
     fixture: dict[str, Any],
     fixture_id: str,
@@ -269,14 +321,57 @@ def main() -> int:
             squad = api.get(f"/squads/teams/{team['id']}", include="player.position")
             players.extend(player_rows(squad.get("data") or [], club_id))
 
+        # Nothing tells us a player has left — they simply stop appearing in any
+        # squad. So is_active has to be rebuilt from the squads just fetched
+        # rather than only ever being set true, which is the same reset-then-
+        # reapply the absence list below uses. The FPL ingestion did this; the
+        # switch to Sportmonks lost it, and the active pool grew every run until
+        # it held roughly twice as many players as the league actually has.
+        #
+        # The floor is a circuit breaker: a partial API response would otherwise
+        # deactivate the entire league and empty every player list on the site.
+        if len(players) < MINIMUM_SQUAD_TOTAL:
+            print(
+                f"Only {len(players)} players across {len(teams)} squads — expected at "
+                f"least {MINIMUM_SQUAD_TOTAL}. Refusing to deactivate anyone on what "
+                "looks like a partial response.",
+                file=sys.stderr,
+            )
+            return 1
+
+        db.update("players", {"is_active": False}, is_active="is.true")
         db.upsert("players", players, on_conflict="sportmonks_id")
-        print(f"  players: {len(players)}")
+        print(f"  players: {len(players)} active, everyone else deactivated")
 
         player_ids = {
             row["sportmonks_id"]: row["id"]
             for row in db.select("players", select="id,sportmonks_id")
             if row["sportmonks_id"]
         }
+
+        # --- injuries and suspensions ------------------------------------
+        # Cleared first, then reapplied. Without the reset a player who has
+        # recovered keeps their old flag forever, because nothing tells us an
+        # absence ended — it just stops appearing in the list.
+        db.update(
+            "players",
+            {"availability": None, "news": None, "expected_return": None, "games_missed": None},
+            is_active="is.true",
+        )
+
+        today = datetime.now(timezone.utc).date()
+        absences: list[dict[str, Any]] = []
+
+        for team in teams:
+            detail = api.get(f"/teams/{team['id']}", include="sidelined.type")
+            sidelined = (detail.get("data") or {}).get("sidelined") or []
+            absences.extend(absence_rows(sidelined, player_ids, today))
+
+        for absence in absences:
+            player_id = absence.pop("id")
+            db.update("players", absence, id=f"eq.{player_id}")
+
+        print(f"  absences: {len(absences)} players injured or suspended")
 
         # --- fixtures ----------------------------------------------------
         fixtures = api.paged(

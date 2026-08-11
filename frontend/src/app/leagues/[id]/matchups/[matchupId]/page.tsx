@@ -57,7 +57,6 @@ type StatRow = {
   saves: number;
   yellow_cards: number;
   red_cards: number;
-  bonus: number;
 };
 
 const POSITION_ORDER: Record<string, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
@@ -75,7 +74,6 @@ function statSummary(stat: StatRow | undefined): string {
   if (stat.goals_conceded) parts.push(`${stat.goals_conceded} conceded`);
   if (stat.yellow_cards) parts.push("YC");
   if (stat.red_cards) parts.push("RC");
-  if (stat.bonus) parts.push(`${stat.bonus}B`);
 
   return parts.join(" · ");
 }
@@ -147,7 +145,7 @@ export default async function MatchupPage({
       ? supabase
           .from("player_match_stats")
           .select(
-            "player_id, minutes, goals, assists, clean_sheet, goals_conceded, saves, yellow_cards, red_cards, bonus, fixtures!inner(gameweek_id)",
+            "player_id, minutes, goals, assists, clean_sheet, goals_conceded, saves, yellow_cards, red_cards, fixtures!inner(gameweek_id)",
           )
           .eq("fixtures.gameweek_id", matchup.gameweek_id)
           .in("player_id", playerIds)

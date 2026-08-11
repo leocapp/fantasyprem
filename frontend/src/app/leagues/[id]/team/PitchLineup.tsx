@@ -13,11 +13,11 @@ export type SquadPlayer = {
   club: string;
   availability: string | null;
   news: string | null;
-  chance: number | null;
+  expectedReturn: string | null;
   fixture: string;
   /** Transferred out of the Premier League — they can no longer score. */
   departed: boolean;
-  /** FPL's expected points for the next gameweek, on FPL's scoring rules. */
+  /** Our projection for the coming gameweek, under this league's scoring rules. */
   projected: number | null;
   lastPoints: number | null;
   lastMinutes: number | null;
@@ -277,7 +277,7 @@ export default function PitchLineup({
                       <AvailabilityFlag
                         availability={player.availability}
                         news={player.news}
-                        chance={player.chance}
+                        expectedReturn={player.expectedReturn}
                       />
                     ) : null}
                   </span>
@@ -368,12 +368,12 @@ export default function PitchLineup({
                       <AvailabilityFlag
                         availability={player.availability}
                         news={player.news}
-                        chance={player.chance}
+                        expectedReturn={player.expectedReturn}
                       />
                     </span>
                     <span className="block truncate text-xs dim">
                       {player.club} · {player.fixture}
-                      {player.projected !== null ? ` · xP ${player.projected}` : ""}
+                      {player.projected !== null ? ` · proj ${player.projected}` : ""}
                       {player.lastPoints !== null
                         ? ` · last ${player.lastPoints} pts${
                             player.lastMinutes !== null ? `, ${player.lastMinutes}'` : ""
@@ -444,7 +444,7 @@ export default function PitchLineup({
                         <AvailabilityFlag
                           availability={player.availability}
                           news={player.news}
-                          chance={player.chance}
+                          expectedReturn={player.expectedReturn}
                         />
                       )}
                       {captain === player.id ? (
@@ -460,7 +460,7 @@ export default function PitchLineup({
                     </span>
                     <span className="block truncate text-xs dim">
                       {player.club} · {player.fixture}
-                      {player.projected !== null ? ` · xP ${player.projected}` : ""}
+                      {player.projected !== null ? ` · proj ${player.projected}` : ""}
                       {player.lastPoints !== null
                         ? ` · last ${player.lastPoints}`
                         : ""}
@@ -477,8 +477,8 @@ export default function PitchLineup({
             {bench.length} on the bench · they score nothing unless you start them.
           </p>
           <p className="mt-1 text-xs dim">
-            xP is FPL&apos;s projection for the coming gameweek, on their scoring rules — a form
-            guide rather than a prediction for this league.
+            proj is this league&apos;s projected points for the coming gameweek — mostly a guess
+            about whether they play, so treat it as a nudge rather than an answer.
           </p>
         </aside>
       </div>

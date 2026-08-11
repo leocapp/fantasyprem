@@ -22,7 +22,7 @@ export default function AvailabilityKey({ className = "" }: { className?: string
           {label}
         </span>
       ))}
-      <span className="text-[var(--text-dim)]">Hover a dot for the club&apos;s wording</span>
+      <span className="text-[var(--text-dim)]">Hover a dot for the injury and return date</span>
     </p>
   );
 }

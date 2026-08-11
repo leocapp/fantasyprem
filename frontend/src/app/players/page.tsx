@@ -14,9 +14,15 @@ type PlayerRow = {
   photo_url: string | null;
   availability: string | null;
   news: string | null;
-  chance_of_playing: number | null;
-  ep_next: number | null;
+  expected_return: string | null;
   clubs: { short_name: string; name: string } | null;
+};
+
+type ExpectationRow = {
+  player_id: string;
+  minutes: number;
+  goals: number;
+  assists: number;
 };
 
 type ClubOption = { id: string; name: string; short_name: string };
@@ -37,7 +43,6 @@ type SearchParams = Promise<{
   page?: string;
   league?: string;
   owner?: string;
-  sort?: string;
 }>;
 
 const PAGE_SIZE = 50;
@@ -93,8 +98,10 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
   const search = (params.q ?? "").replace(/[,()]/g, "").trim();
   const ownerFilter = params.owner === "free" || params.owner === "taken" ? params.owner : undefined;
 
+  // current_clubs, not clubs: relegated clubs keep their rows for last season's
+  // fixtures, but filtering by one can only ever return nothing.
   const { data: clubs } = await supabase
-    .from("clubs")
+    .from("current_clubs")
     .select("id, name, short_name")
     .order("name")
     .returns<ClubOption[]>();
@@ -102,7 +109,7 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
   let query = supabase
     .from("players")
     .select(
-      "id, display_name, position, shirt_number, photo_url, availability, news, chance_of_playing, ep_next, clubs (short_name, name)",
+      "id, display_name, position, shirt_number, photo_url, availability, news, expected_return, clubs (short_name, name)",
       { count: "exact" },
     )
     .eq("is_active", true);
@@ -118,19 +125,36 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
     if (ownerFilter === "taken") query = query.in("id", ownedIds);
   }
 
-  const sort = params.sort === "projected" ? "projected" : "name";
-
-  query =
-    sort === "projected"
-      ? query.order("ep_next", { ascending: false, nullsFirst: false })
-      : query.order("display_name");
-
   const from = (page - 1) * PAGE_SIZE;
   const {
     data: players,
     count,
     error,
-  } = await query.range(from, from + PAGE_SIZE - 1).returns<PlayerRow[]>();
+  } = await query
+    .order("display_name")
+    .range(from, from + PAGE_SIZE - 1)
+    .returns<PlayerRow[]>();
+
+  // Expected performance for the next gameweek. League-agnostic, so this page
+  // can show it without knowing which league you're looking from.
+  const { data: nextGameweek } = await supabase
+    .from("gameweeks")
+    .select("id, number")
+    .neq("status", "complete")
+    .order("number")
+    .limit(1)
+    .maybeSingle<{ id: string; number: number }>();
+
+  const { data: expectations } = nextGameweek
+    ? await supabase
+        .from("player_gameweek_expectations")
+        .select("player_id, minutes, goals, assists")
+        .eq("gameweek_id", nextGameweek.id)
+        .in("player_id", (players ?? []).map((player) => player.id))
+        .returns<ExpectationRow[]>()
+    : { data: [] };
+
+  const expectationBy = new Map((expectations ?? []).map((row) => [row.player_id, row]));
 
   const total = count ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -142,7 +166,6 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
     if (params.club) next.set("club", params.club);
     if (activeLeagueId) next.set("league", activeLeagueId);
     if (ownerFilter) next.set("owner", ownerFilter);
-    if (sort !== "name") next.set("sort", sort);
     if (target > 1) next.set("page", String(target));
     const value = next.toString();
     return value ? `/players?${value}` : "/players";
@@ -225,11 +248,6 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
           </select>
         ) : null}
 
-        <select name="sort" defaultValue={sort} className="select" suppressHydrationWarning>
-          <option value="name">Name</option>
-          <option value="projected">Projected</option>
-        </select>
-
         <button className="btn btn-ghost">Filter</button>
       </form>
 
@@ -265,15 +283,23 @@ export default async function PlayersPage({ searchParams }: { searchParams: Sear
                 <AvailabilityFlag
                   availability={player.availability}
                   news={player.news}
-                  chance={player.chance_of_playing}
+                  expectedReturn={player.expected_return}
                 />
               </span>
               <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
               <span
-                className="numeric w-10 text-right text-sm"
-                title="FPL's projected points for the next gameweek, on their scoring rules"
+                className="numeric w-24 text-right text-xs dim"
+                title={
+                  nextGameweek
+                    ? `Expected for gameweek ${nextGameweek.number}: minutes, goals and assists`
+                    : undefined
+                }
               >
-                {player.ep_next ?? "–"}
+                {expectationBy.get(player.id)
+                  ? `${Math.round(expectationBy.get(player.id)!.minutes)}' · ${Number(
+                      expectationBy.get(player.id)!.goals,
+                    ).toFixed(2)}g`
+                  : "–"}
               </span>
               {activeLeagueId ? (
                 <span

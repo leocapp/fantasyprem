@@ -13,23 +13,35 @@ const STATUS: Record<string, { label: string; colour: string }> = {
   n: { label: "Not in squad", colour: "var(--text-dim)" },
 };
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "24 Oct" — formatted by hand to avoid locale differences between server and client. */
+function returnDate(value: string): string {
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return `${parsed.getDate()} ${MONTHS[parsed.getMonth()]}`;
+}
+
 export default function AvailabilityFlag({
   availability,
   news,
-  chance,
+  expectedReturn,
   showLabel = false,
 }: {
   availability: string | null | undefined;
   news?: string | null;
-  chance?: number | null;
+  expectedReturn?: string | null;
   showLabel?: boolean;
 }) {
   if (!availability || availability === "a") return null;
 
   const status = STATUS[availability] ?? { label: "Unavailable", colour: "var(--danger)" };
-  const detail =
-    news ||
-    (chance !== null && chance !== undefined ? `${chance}% chance of playing` : status.label);
+
+  // "Out indefinitely" is materially worse news than a date, so say so rather
+  // than leaving the absence of a date unexplained.
+  const timing = expectedReturn ? `back ${returnDate(expectedReturn)}` : "no return date";
+
+  const detail = [news || status.label, timing].join(" · ");
 
   // The padding is the point: a 6px dot is a miserable hover and tap target,
   // so the wrapper carries a much larger hit area than the mark it draws.
@@ -44,7 +56,12 @@ export default function AvailabilityFlag({
         className="inline-block h-2 w-2 rounded-full ring-2"
         style={{ background: status.colour, boxShadow: "0 0 0 3px rgb(0 0 0 / 0.15)" }}
       />
-      {showLabel ? (chance !== null && chance !== undefined ? `${chance}%` : status.label) : null}
+      {showLabel ? (
+        <span>
+          {status.label}
+          {expectedReturn ? ` · back ${returnDate(expectedReturn)}` : ""}
+        </span>
+      ) : null}
     </span>
   );
 }

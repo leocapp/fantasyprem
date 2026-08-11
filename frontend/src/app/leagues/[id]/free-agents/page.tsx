@@ -23,8 +23,7 @@ type PlayerRow = {
   photo_url: string | null;
   availability: string | null;
   news: string | null;
-  chance_of_playing: number | null;
-  ep_next: number | null;
+  expected_return: string | null;
   clubs: { short_name: string } | null;
 };
 
@@ -102,7 +101,7 @@ export default async function FreeAgentsPage({
     : undefined;
 
   const { data: clubs } = await supabase
-    .from("clubs")
+    .from("current_clubs")
     .select("id, name")
     .order("name")
     .returns<{ id: string; name: string }[]>();
@@ -110,7 +109,7 @@ export default async function FreeAgentsPage({
   let query = supabase
     .from("players")
     .select(
-      "id, display_name, position, photo_url, availability, news, chance_of_playing, ep_next, clubs (short_name)",
+      "id, display_name, position, photo_url, availability, news, expected_return, clubs (short_name)",
       { count: "exact" },
     )
     .eq("is_active", true);
@@ -120,28 +119,44 @@ export default async function FreeAgentsPage({
   if (position) query = query.eq("position", position);
   if (filters.club) query = query.eq("club_id", filters.club);
 
-  // Best available first — that's what you're here for.
-  const sort = filters.sort === "name" ? "name" : "projected";
+  // Best available first — that's what you're here for. Mid-season "best" is
+  // what they've actually scored in THIS league, which lives in another table,
+  // and PostgREST can't order by a joined column. Free agents number in the
+  // hundreds, so fetch them and sort here.
+  const sort = filters.sort === "name" ? "name" : "points";
 
-  query =
-    sort === "name"
-      ? query.order("display_name")
-      : query.order("ep_next", { ascending: false, nullsFirst: false });
+  const [{ data: candidates, count }, { data: earned }] = await Promise.all([
+    query.order("display_name").limit(1000).returns<PlayerRow[]>(),
+
+    supabase
+      .from("player_league_season_points")
+      .select("player_id, total_points")
+      .eq("league_id", id)
+      .order("total_points", { ascending: false })
+      .limit(1000)
+      .returns<{ player_id: string; total_points: number }[]>(),
+  ]);
+
+  const pointsBy = new Map((earned ?? []).map((row) => [row.player_id, Number(row.total_points)]));
+
+  const sorted = (candidates ?? []).slice().sort((a, b) => {
+    if (sort === "name") return a.display_name.localeCompare(b.display_name);
+    // Never seen on the pitch sorts below someone on zero, who at least played.
+    return (pointsBy.get(b.id) ?? -1) - (pointsBy.get(a.id) ?? -1);
+  });
 
   const offset = (page - 1) * PAGE_SIZE;
-  const { data: players, count } = await query
-    .range(offset, offset + PAGE_SIZE - 1)
-    .returns<PlayerRow[]>();
+  const players = sorted.slice(offset, offset + PAGE_SIZE);
 
-  const total = count ?? 0;
-  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const total = count ?? sorted.length;
+  const lastPage = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
 
   const queryFor = (targetPage: number) => {
     const next = new URLSearchParams();
     if (search) next.set("q", search);
     if (position) next.set("position", position);
     if (filters.club) next.set("club", filters.club);
-    if (sort !== "projected") next.set("sort", sort);
+    if (sort !== "points") next.set("sort", sort);
     if (targetPage > 1) next.set("page", String(targetPage));
     const value = next.toString();
     return value ? `?${value}` : "";
@@ -207,7 +222,7 @@ export default async function FreeAgentsPage({
           ))}
         </select>
         <select name="sort" defaultValue={sort} suppressHydrationWarning className="select">
-          <option value="projected">Projected</option>
+          <option value="points">Points this season</option>
           <option value="name">Name</option>
         </select>
         <button className="btn btn-ghost">Filter</button>
@@ -236,15 +251,15 @@ export default async function FreeAgentsPage({
                 <AvailabilityFlag
                   availability={player.availability}
                   news={player.news}
-                  chance={player.chance_of_playing}
+                  expectedReturn={player.expected_return}
                 />
               </span>
               <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
               <span
                 className="numeric w-10 text-right text-sm"
-                title="FPL's projected points for the next gameweek, on their scoring rules"
+                title="Points this season under this league's scoring rules"
               >
-                {player.ep_next ?? "–"}
+                {pointsBy.get(player.id) ?? "–"}
               </span>
 
               {/* suppressHydrationWarning: browser autofill stamps signature

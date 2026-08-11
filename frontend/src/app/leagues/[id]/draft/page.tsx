@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import AvailabilityFlag from "@/components/AvailabilityFlag";
 import ManagerAvatar from "@/components/ManagerAvatar";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import { createClient } from "@/lib/supabase/server";
@@ -42,10 +43,9 @@ type PlayerRow = {
   display_name: string;
   position: string;
   photo_url: string | null;
-  ep_next: number | null;
-  form: number | null;
-  price: number | null;
-  selected_by_percent: number | null;
+  availability: string | null;
+  news: string | null;
+  expected_return: string | null;
   clubs: { short_name: string } | null;
 };
 
@@ -123,7 +123,7 @@ export default async function DraftPage({
   const page = Math.max(1, Number(filters.page ?? 1) || 1);
 
   const { data: clubs } = await supabase
-    .from("clubs")
+    .from("current_clubs")
     .select("id, name")
     .order("name")
     .returns<ClubOption[]>();
@@ -131,7 +131,7 @@ export default async function DraftPage({
   let available = supabase
     .from("players")
     .select(
-      "id, display_name, position, photo_url, ep_next, form, price, selected_by_percent, clubs (short_name)",
+      "id, display_name, position, photo_url, availability, news, expected_return, clubs (short_name)",
       { count: "exact" },
     )
     .eq("is_active", true);
@@ -367,12 +367,21 @@ export default async function DraftPage({
               <li key={player.id} className="row">
                 <PlayerAvatar src={player.photo_url} name={player.display_name} />
                 <span className={`badge badge-${player.position}`}>{player.position}</span>
-                <Link
-                  href={`/leagues/${league.id}/players/${player.id}`}
-                  className="flex-1 truncate font-medium hover:underline"
-                >
-                  {player.display_name}
-                </Link>
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <Link
+                    href={`/leagues/${league.id}/players/${player.id}`}
+                    className="truncate font-medium hover:underline"
+                  >
+                    {player.display_name}
+                  </Link>
+                  {/* An injury is the single most important thing to know before
+                      spending a pick, so it belongs on the board itself. */}
+                  <AvailabilityFlag
+                    availability={player.availability}
+                    news={player.news}
+                    expectedReturn={player.expected_return}
+                  />
+                </span>
                 <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
                 <span
                   className="numeric w-16 text-right text-sm"

@@ -26,8 +26,7 @@ type PlayerRow = {
   shirt_number: number | null;
   availability: string | null;
   news: string | null;
-  chance_of_playing: number | null;
-  ep_next: number | null;
+  expected_return: string | null;
   is_active: boolean;
   clubs: { short_name: string } | null;
 };
@@ -132,7 +131,7 @@ export default async function TeamPage({
       supabase
         .from("roster_entries")
         .select(
-          "player_id, players (id, display_name, position, photo_url, club_id, shirt_number, availability, news, chance_of_playing, ep_next, is_active, clubs (short_name))",
+          "player_id, players (id, display_name, position, photo_url, club_id, shirt_number, availability, news, expected_return, is_active, clubs (short_name))",
         )
         .eq("fantasy_team_id", team.id)
         .is("dropped_at", null)
@@ -202,6 +201,27 @@ export default async function TeamPage({
 
   const lastGameweek = new Map((previousScores ?? []).map((row) => [row.player_id, row]));
 
+  // Our projection for the coming gameweek, under this league's rules. A squad
+  // is roughly fifteen players, so one call each is cheap and they go together.
+  const rosterIds = (roster ?? [])
+    .map((row) => row.players?.id)
+    .filter((value): value is string => Boolean(value));
+
+  const projections = gameweek
+    ? await Promise.all(
+        rosterIds.map(async (playerId) => {
+          const { data } = await supabase.rpc("projected_points", {
+            p_league_id: id,
+            p_player_id: playerId,
+            p_gameweek_id: gameweek.id,
+          });
+          return [playerId, data as number | null] as const;
+        }),
+      )
+    : [];
+
+  const projectedBy = new Map(projections);
+
   const captainId = lineup?.lineup_players.find((row) => row.is_captain)?.player_id;
   const viceId = lineup?.lineup_players.find((row) => row.is_vice_captain)?.player_id;
 
@@ -228,7 +248,7 @@ export default async function TeamPage({
       club: player.clubs?.short_name ?? "—",
       availability: player.availability,
       news: player.news,
-      chance: player.chance_of_playing,
+      expectedReturn: player.expected_return,
       // A departed player's old club still has fixtures — showing one would
       // imply they're playing in it.
       departed: !player.is_active,
@@ -237,7 +257,7 @@ export default async function TeamPage({
         : fixtures?.length
           ? fixtures.join(", ")
           : "no fixture",
-      projected: player.ep_next,
+      projected: projectedBy.get(player.id) ?? null,
       lastPoints: last ? Number(last.points) : null,
       lastMinutes: last?.breakdown?.minutes ?? null,
     };

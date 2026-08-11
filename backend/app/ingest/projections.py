@@ -27,6 +27,7 @@ from __future__ import annotations
 import math
 import sys
 from collections import defaultdict
+from datetime import date
 from typing import Any
 
 from app.config import get_settings
@@ -44,10 +45,16 @@ PRIOR_FADES_AFTER = 10
 
 AVAILABILITY_FACTOR = {"a": 1.0, "d": 0.5, "i": 0.0, "s": 0.0, "u": 0.0, "n": 0.0}
 
-# Flip this back on once a job is populating players.availability again. Until
-# then the column holds whatever FPL last wrote, and acting on it means
-# projecting zero minutes for players who are perfectly fit.
-AVAILABILITY_DATA_IS_MAINTAINED = False
+# The Sportmonks ingestion clears and repopulates availability on every run, so
+# it can be trusted again. It was off while nothing maintained the column, which
+# is the only safe default: a stale absence silently zeroes a fit player.
+AVAILABILITY_DATA_IS_MAINTAINED = True
+
+# A player expected back within a few days of the deadline might feature, but
+# rarely for a full match. Better than treating "back tomorrow" and "out for the
+# season" identically, which is all FPL's data allowed.
+RETURNING_SOON_DAYS = 7
+RETURNING_SOON_FACTOR = 0.4
 
 # A goal is worth roughly this many assists in terms of how often it happens;
 # used only to spread expected goals when a player has no xG recorded.
@@ -155,12 +162,41 @@ def team_strength(fixtures: list[dict[str, Any]]) -> dict[str, dict[str, float]]
     return strength
 
 
+def availability_factor(player: dict[str, Any], deadline: date | None) -> float:
+    """How much of their usual minutes to expect, given any recorded absence.
+
+    The expected return date is what makes this better than a flag. A player
+    due back three weeks after the deadline is worth nothing; one due back the
+    week before is worth a cautious fraction, because managers ease players in.
+    """
+    availability = player.get("availability")
+    if not availability or availability == "a":
+        return 1.0
+
+    expected_return = player.get("expected_return")
+    if not expected_return or not deadline:
+        # Out with no return date is the worst case: indefinitely.
+        return AVAILABILITY_FACTOR.get(availability, 0.0)
+
+    try:
+        returns_on = date.fromisoformat(expected_return)
+    except (TypeError, ValueError):
+        return AVAILABILITY_FACTOR.get(availability, 0.0)
+
+    if returns_on > deadline:
+        return 0.0
+
+    days_before = (deadline - returns_on).days
+    return 1.0 if days_before > RETURNING_SOON_DAYS else RETURNING_SOON_FACTOR
+
+
 def project(
     player: dict[str, Any],
     current: list[dict[str, Any]],
     prior: list[dict[str, Any]],
     opponent: dict[str, float],
     baseline: dict[str, float] | None = None,
+    deadline: date | None = None,
 ) -> dict[str, Any]:
     recent = current[-5:] or prior[-5:]
     base_minutes = (sum(row["minutes"] for row in recent) / len(recent)) if recent else 0.0
@@ -169,14 +205,9 @@ def project(
     # Nothing does since the switch to Sportmonks — their injury feed isn't
     # ingested yet — and a stale value silently zeroed every player's expected
     # minutes, which is a far worse failure than ignoring injuries entirely.
-    availability = player.get("availability")
-    chance = player.get("chance_of_playing")
-
     factor = 1.0
     if AVAILABILITY_DATA_IS_MAINTAINED:
-        factor = AVAILABILITY_FACTOR.get(availability or "a", 1.0)
-        if chance is not None:
-            factor = chance / 100.0
+        factor = availability_factor(player, deadline)
 
     minutes = round(base_minutes * factor, 1)
     share = minutes / 90.0
@@ -278,7 +309,7 @@ def main(argv: list[str] | None = None) -> int:
 
         gameweeks = db.select(
             "gameweeks",
-            select="id,number,status",
+            select="id,number,status,deadline_at",
             season_id=f"eq.{current_season['id']}",
             order="number",
         )
@@ -290,7 +321,10 @@ def main(argv: list[str] | None = None) -> int:
 
         players = db.select(
             "players",
-            select="id,display_name,position,club_id,availability,chance_of_playing",
+            select=(
+                "id,display_name,position,club_id,availability,chance_of_playing,"
+                "expected_return"
+            ),
             is_active="is.true",
         )
         for player in players:
@@ -346,6 +380,13 @@ def main(argv: list[str] | None = None) -> int:
         club_ids_in_players = {player["club_id"] for player in players}
 
         for gameweek in upcoming:
+            deadline = None
+            if gameweek.get("deadline_at"):
+                try:
+                    deadline = date.fromisoformat(gameweek["deadline_at"][:10])
+                except ValueError:
+                    deadline = None
+
             opponents: dict[str, str] = {}
             matching = 0
             for fixture in fixtures:
@@ -372,6 +413,7 @@ def main(argv: list[str] | None = None) -> int:
                     prior_history.get(player["id"], []),
                     strength.get(opponent_club, {}),
                     baselines.get(player["position"], {}),
+                    deadline,
                 )
 
                 if explain_name and explain_name.lower() in (player.get("name") or "").lower():

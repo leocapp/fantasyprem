@@ -59,7 +59,6 @@ const STAT_LABELS: Record<string, string> = {
   own_goals: "Own goal",
   yellow_cards: "Yellow card",
   red_cards: "Red card",
-  bonus: "Bonus point - FPL MOTM (given to 3 players - 1, 2, 3)",
   shots_on_target: "Shot on target",
   key_passes: "Key pass",
   tackles: "Tackle",

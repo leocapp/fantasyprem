@@ -106,16 +106,21 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 python -m app.ingest.cron        # everything, as the scheduler runs it
-python -m app.ingest.fpl         # refresh squads and fixtures
-python -m app.ingest.stats       # match stats and scoring
+python -m app.ingest.sportmonks  # squads, fixtures, stats, injuries
+python -m app.ingest.projections # expected minutes and per-90 rates
+python -m app.ingest.backfill    # a past season, for draft rankings
 python -m app.ingest.synthetic 3 # fabricate one gameweek (development only)
 ```
 
 In production these run hourly via GitHub Actions, so points appear within an
 hour of a match finishing.
 
-Data comes from the Fantasy Premier League API, which is public but unofficial
-and undocumented.
+Data comes from Sportmonks, which needs `SPORTMONKS_API_KEY` in `backend/.env`.
+The Fantasy Premier League API was the original source and `app.ingest.fpl` is
+kept as the revert path, but it refuses to run without `ALLOW_FPL_INGEST=1`:
+its rows are keyed on FPL ids, which cannot collide with Sportmonks rows, so
+running it against a Sportmonks database silently duplicates every club, player
+and fixture instead of failing.
 
 ## Deploying
 
