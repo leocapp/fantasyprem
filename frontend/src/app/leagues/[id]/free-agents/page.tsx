@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import AvailabilityFlag from "@/components/AvailabilityFlag";
 import AvailabilityKey from "@/components/AvailabilityKey";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import { fetchAll } from "@/lib/fetchAll";
 import { createClient } from "@/lib/supabase/server";
 
 import { swapPlayer } from "./actions";
@@ -152,12 +153,9 @@ export default async function FreeAgentsPage({
 
       // Last season scored under THIS league's rules, which is what the draft
       // board ranks on — not a raw goal count.
-      supabase
-        .from("draft_values")
-        .select("player_id, points")
-        .eq("league_id", id)
-        .limit(2000)
-        .returns<{ player_id: string; points: number }[]>(),
+      fetchAll<{ player_id: string; points: number }>(
+        supabase.from("draft_values").select("player_id, points").eq("league_id", id),
+      ).then((data) => ({ data })),
 
       nextGameweek
         ? supabase.rpc("projected_points_for_league", {
@@ -339,7 +337,11 @@ export default async function FreeAgentsPage({
                 className="numeric w-10 text-right text-sm"
                 title={COLUMN_HELP[sort]}
               >
-                {sort === "name" ? "" : (valueFor(player.id) ?? "–")}
+                {sort === "name"
+                  ? ""
+                  : valueFor(player.id) === null
+                    ? "–"
+                    : Number(valueFor(player.id)).toFixed(1)}
               </span>
 
               {/* suppressHydrationWarning: browser autofill stamps signature

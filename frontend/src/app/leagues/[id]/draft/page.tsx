@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import AvailabilityFlag from "@/components/AvailabilityFlag";
 import ManagerAvatar from "@/components/ManagerAvatar";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import { fetchAll } from "@/lib/fetchAll";
 import { createClient } from "@/lib/supabase/server";
 
 import RealtimeRefresh from "@/components/RealtimeRefresh";
@@ -62,6 +63,16 @@ type ClubOption = { id: string; name: string };
 
 const PAGE_SIZE = 50;
 const POSITIONS = ["GK", "DEF", "MID", "FWD"] as const;
+
+/**
+ * Postgres rounds to one decimal, so 251.0 arrives as "251.0" and JavaScript
+ * prints it as 251 while its neighbours keep their decimal. In a right-aligned
+ * column that misaligns the digits, which reads as a data problem rather than a
+ * formatting one. Fixed places instead.
+ */
+function oneDecimal(value: number | null | undefined): string {
+  return value === null || value === undefined ? "–" : Number(value).toFixed(1);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -157,18 +168,22 @@ export default async function DraftPage({
   // Ranking lives in another table, and PostgREST can't order a query by a
   // joined column. The whole league's ranking is only a few hundred small rows,
   // so it's fetched once and the sort and paging happen here.
-  const { data: ranking } = await supabase
-    .from("draft_values")
-    .select("player_id, points, value_over_replacement, appearances")
-    .eq("league_id", id)
-    .returns<{
-      player_id: string;
-      points: number;
-      value_over_replacement: number | null;
-      appearances: number;
-    }[]>();
+  // Paged: this is one row per player per league and passed a thousand once
+  // the backfill started keeping players who have left the league. Truncation
+  // here doesn't error, it just drops players off the bottom of the board.
+  const ranking = await fetchAll<{
+    player_id: string;
+    points: number;
+    value_over_replacement: number | null;
+    appearances: number;
+  }>(
+    supabase
+      .from("draft_values")
+      .select("player_id, points, value_over_replacement, appearances")
+      .eq("league_id", id),
+  );
 
-  const rankBy = new Map((ranking ?? []).map((row) => [row.player_id, row]));
+  const rankBy = new Map(ranking.map((row) => [row.player_id, row]));
 
   const { data: allAvailable, count: availableCount } = await available
     .order("display_name")
@@ -393,9 +408,9 @@ export default async function DraftPage({
                 >
                   {rankBy.get(player.id)?.value_over_replacement != null ? (
                     <>
-                      <span className="dim">{rankBy.get(player.id)?.points}</span>{" "}
+                      <span className="dim">{oneDecimal(rankBy.get(player.id)?.points)}</span>{" "}
                       {(rankBy.get(player.id)?.value_over_replacement ?? 0) > 0 ? "+" : ""}
-                      {rankBy.get(player.id)?.value_over_replacement}
+                      {oneDecimal(rankBy.get(player.id)?.value_over_replacement)}
                     </>
                   ) : (
                     "–"

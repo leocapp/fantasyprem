@@ -119,11 +119,24 @@ export async function updateScoringRules(formData: FormData) {
     }
   }
 
+  // The draft board ranks on draft_values, a cached table computed under these
+  // rules. Without this it keeps showing the old ranking until the nightly job
+  // runs — and it looks right, which is worse: a commissioner changes the
+  // scoring, sees the same numbers, and concludes the data is broken.
+  const { error: rankError } = await supabase.rpc("recompute_draft_values", {
+    p_league_id: leagueId,
+  });
+
   revalidatePath(`/leagues/${leagueId}`, "layout");
   redirect(
     back(
       leagueId,
-      "?message=Scoring+updated.+Re-run+scoring+to+apply+it+to+past+gameweeks.",
+      rankError
+        ? `?message=${encodeURIComponent(
+            "Scoring updated, but the draft rankings could not be rebuilt: " +
+              rankError.message,
+          )}`
+        : "?message=Scoring+updated+and+draft+rankings+rebuilt.+Re-run+scoring+to+apply+it+to+past+gameweeks.",
     ),
   );
 }

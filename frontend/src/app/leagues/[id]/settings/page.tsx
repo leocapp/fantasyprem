@@ -370,10 +370,17 @@ export default async function SettingsPage({
                   <span className={`badge badge-${rule.applies_to} ml-2`}>{rule.applies_to}</span>
                 ) : null}
               </span>
+              {/* Hundredths, matching the numeric(5,2) column. A half-point
+                  step was fine for goals and cards, but the stats added in 0028
+                  happen thirty to fifty times more often — pricing a duel needs
+                  0.05, and the browser silently refuses anything off-step.
+                  Bounded because the column overflows above 999.99. */}
               <input
                 name={`points-${rule.id}`}
                 type="number"
-                step="0.5"
+                step="0.01"
+                min={-99}
+                max={999}
                 defaultValue={rule.points}
                 className="input w-20 text-right"
                 suppressHydrationWarning
