@@ -23,7 +23,7 @@ from __future__ import annotations
 import sys
 import time
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -40,6 +40,25 @@ POSITIONS = {24: "GK", 25: "DEF", 26: "MID", 27: "FWD"}
 # squad fetch came back short, and deactivating on a short response would empty
 # the player list, the draft board and every free agent page at once.
 MINIMUM_SQUAD_TOTAL = 300
+
+# How long before the first kickoff the captain is settled. Ten minutes is
+# enough to react to a team sheet — those land an hour before — without being so
+# early that people forget. Individual players lock at their own kickoff, so
+# this only really governs the armband and the earliest match.
+DEADLINE_LEAD = timedelta(minutes=10)
+
+
+def deadline_from(first_kickoff: str) -> str:
+    """Gameweek deadline: DEADLINE_LEAD before the first match starts.
+
+    Sportmonks gives 'YYYY-MM-DD HH:MM:SS' in UTC. Parsed and re-emitted as an
+    explicit UTC timestamp rather than passed through, so Postgres can't read it
+    as local time.
+    """
+    moment = datetime.fromisoformat(first_kickoff.replace(" ", "T"))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return (moment - DEADLINE_LEAD).isoformat()
 
 # Lineup entries are starters (11) or bench (12).
 STARTER_TYPE = 11
@@ -455,10 +474,10 @@ def main() -> int:
             {
                 "season_id": season_row_id,
                 "number": number,
-                "deadline_at": deadline,
+                "deadline_at": deadline_from(kickoff),
                 "status": "upcoming",
             }
-            for number, deadline in sorted(rounds.items())
+            for number, kickoff in sorted(rounds.items())
         ]
 
         db.upsert("gameweeks", gameweek_rows, on_conflict="season_id,number")

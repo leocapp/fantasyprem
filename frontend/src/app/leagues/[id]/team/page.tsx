@@ -51,6 +51,7 @@ type FixtureRow = {
   home_club_id: string;
   away_club_id: string;
   kickoff_at: string;
+  status: string;
 };
 
 type ScoreRow = { player_id: string; points: number; breakdown: Record<string, number> };
@@ -157,7 +158,7 @@ export default async function TeamPage({
       gameweek
         ? supabase
             .from("fixtures")
-            .select("home_club_id, away_club_id, kickoff_at")
+            .select("home_club_id, away_club_id, kickoff_at, status")
             .eq("gameweek_id", gameweek.id)
             .returns<FixtureRow[]>()
         : Promise.resolve({ data: [] as FixtureRow[] }),
@@ -169,6 +170,23 @@ export default async function TeamPage({
     ]);
 
   const clubName = new Map((clubs ?? []).map((club) => [club.id, club.short_name]));
+
+  // club id -> earliest kickoff this gameweek. A player is locked from that
+  // moment: the same rule save_lineup enforces, mirrored here so the pitch
+  // doesn't offer a move the database will refuse.
+  const kickoffByClub = new Map<string, number>();
+  for (const fixture of fixtures ?? []) {
+    // Matches the database rule: a fixture already started or finished locks
+    // now, whatever its scheduled time says.
+    const at =
+      fixture.status === "live" || fixture.status === "finished"
+        ? -Infinity
+        : new Date(fixture.kickoff_at).getTime();
+    for (const club of [fixture.home_club_id, fixture.away_club_id]) {
+      const known = kickoffByClub.get(club);
+      if (known === undefined || at < known) kickoffByClub.set(club, at);
+    }
+  }
 
   // club id -> "v ARS" / "@ MCI", or several for a double gameweek.
   const opponents = new Map<string, string[]>();
@@ -249,6 +267,9 @@ export default async function TeamPage({
       availability: player.availability,
       news: player.news,
       expectedReturn: player.expected_return,
+      locked:
+        player.club_id !== null &&
+        (kickoffByClub.get(player.club_id) ?? Infinity) <= Date.now(),
       // A departed player's old club still has fixtures — showing one would
       // imply they're playing in it.
       departed: !player.is_active,

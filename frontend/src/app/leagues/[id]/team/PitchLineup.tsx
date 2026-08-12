@@ -17,6 +17,8 @@ export type SquadPlayer = {
   fixture: string;
   /** Transferred out of the Premier League — they can no longer score. */
   departed: boolean;
+  /** Their club has kicked off, so their place in the XI is now fixed. */
+  locked: boolean;
   /** Our projection for the coming gameweek, under this league's scoring rules. */
   projected: number | null;
   lastPoints: number | null;
@@ -132,6 +134,12 @@ export default function PitchLineup({
   }
 
   function assign(position: keyof Assignments, index: number, playerId: string | null) {
+    // Refused here as well as in the database, so the pitch never shows a move
+    // that the save is going to reject.
+    const leaving = assignments[position][index];
+    if (leaving && byId.get(leaving)?.locked) return;
+    if (playerId && byId.get(playerId)?.locked) return;
+
     setAssignments((current) => {
       const next: Assignments = {
         GK: [...current.GK],
@@ -163,9 +171,18 @@ export default function PitchLineup({
 
   const eligible = picking
     ? players.filter(
-        (player) => player.position === picking.position && !selected.has(player.id),
+        (player) =>
+          player.position === picking.position &&
+          !selected.has(player.id) &&
+          !player.locked,
       )
     : [];
+
+  const lockedCount = players.filter((player) => player.locked).length;
+
+  // One condition, two buttons — they must never disagree about whether the
+  // lineup is submittable.
+  const canSave = starterCount === 11 && Boolean(captain) && Boolean(vice) && captain !== vice;
 
   return (
     <div className="flex flex-col gap-4">
@@ -176,6 +193,14 @@ export default function PitchLineup({
       {captain ? <input type="hidden" name="captain" value={captain} /> : null}
       {vice ? <input type="hidden" name="vice" value={vice} /> : null}
       <input type="hidden" name="formation" value={formationCode} />
+
+      {lockedCount > 0 ? (
+        <p className="notice text-xs">
+          {lockedCount} {lockedCount === 1 ? "player has" : "players have"} kicked off and can no
+          longer be moved. Everyone else stays editable until their own match starts — the captain
+          is fixed for the gameweek.
+        </p>
+      ) : null}
 
       {departedStarters.length > 0 ? (
         <p className="notice notice-error">
@@ -197,8 +222,11 @@ export default function PitchLineup({
           <h2 className="text-xl font-bold tracking-tight">
             Starting XI · Gameweek {gameweekNumber}
           </h2>
+          {/* "Locks" was true when the whole XI froze at once. Now each player
+              locks at their own kickoff and only the armband follows the
+              gameweek deadline, so the label says which is which. */}
           <p className="text-xs dim">
-            {teamName} · locks {deadlineLabel}
+            {teamName} · captain fixed {deadlineLabel} · each player locks at kickoff
           </p>
         </div>
 
@@ -223,6 +251,18 @@ export default function PitchLineup({
           >
             {starterCount}/11
           </span>
+
+          {/* The same submit as the one below the bench. On a phone the pitch
+              and the bench together are well over a screen, so the button that
+              commits the change can easily be somewhere you never scroll to —
+              and an unsaved lineup looks identical to a saved one. */}
+          <button
+            className="btn btn-primary btn-sm"
+            disabled={!canSave}
+            title={canSave ? undefined : "Needs eleven players, a captain and a vice-captain"}
+          >
+            Save
+          </button>
         </div>
       </div>
 
@@ -262,13 +302,22 @@ export default function PitchLineup({
                 <button
                   key={`${position}-${index}`}
                   type="button"
-                  onClick={() => setPicking(isPicking ? null : { position, index })}
+                  onClick={() => {
+                    if (player?.locked) return;
+                    setPicking(isPicking ? null : { position, index });
+                  }}
+                  title={player?.locked ? `${player.name} has kicked off — locked` : undefined}
                   className={`flex w-[4.75rem] flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-center transition-colors sm:w-24 ${
-                    isPicking ? "bg-black/40 ring-2 ring-white/60" : "hover:bg-black/25"
+                    player?.locked
+                      ? "cursor-default opacity-60"
+                      : isPicking
+                        ? "bg-black/40 ring-2 ring-white/60"
+                        : "hover:bg-black/25"
                   }`}
                 >
                   <Shirt number={player?.shirtNumber ?? null} muted={!player} />
                   <span className="w-full truncate text-[11px] font-medium text-white">
+                    {player?.locked ? "\u00b7 " : ""}
                     {player?.name ?? "Empty"}
                   </span>
                   <span className="flex items-center gap-1 text-[10px] text-white/70">
@@ -394,10 +443,7 @@ export default function PitchLineup({
         </div>
       ) : null}
 
-          <button
-            className="btn btn-primary"
-            disabled={starterCount !== 11 || !captain || !vice || captain === vice}
-          >
+          <button className="btn btn-primary" disabled={!canSave}>
             Save lineup
           </button>
 
