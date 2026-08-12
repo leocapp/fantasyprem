@@ -41,6 +41,13 @@ const PAGE_SIZE = 25;
 const POSITIONS = ["GK", "DEF", "MID", "FWD"] as const;
 const POSITION_ORDER: Record<string, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
 
+const COLUMN_HELP: Record<string, string> = {
+  points: "Points this season, under this league's scoring rules",
+  last: "Points last season, rescored under this league's rules",
+  projected: "Projected points for the next gameweek, under this league's rules",
+  name: "",
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function FreeAgentsPage({
@@ -119,31 +126,86 @@ export default async function FreeAgentsPage({
   if (position) query = query.eq("position", position);
   if (filters.club) query = query.eq("club_id", filters.club);
 
-  // Best available first — that's what you're here for. Mid-season "best" is
-  // what they've actually scored in THIS league, which lives in another table,
-  // and PostgREST can't order by a joined column. Free agents number in the
-  // hundreds, so fetch them and sort here.
-  const sort = filters.sort === "name" ? "name" : "points";
+  // The next gameweek still to be played, for the projection sort.
+  const { data: nextGameweek } = await supabase
+    .from("gameweeks")
+    .select("id, number")
+    .neq("status", "complete")
+    .order("number")
+    .limit(1)
+    .maybeSingle<{ id: string; number: number }>();
 
-  const [{ data: candidates, count }, { data: earned }] = await Promise.all([
-    query.order("display_name").limit(1000).returns<PlayerRow[]>(),
+  // None of these can be ordered by PostgREST — they all live in other tables
+  // or come from a function — so the candidates are fetched whole and sorted
+  // here. A few hundred rows, once.
+  const [{ data: candidates, count }, { data: earned }, { data: lastSeason }, { data: projected }] =
+    await Promise.all([
+      query.order("display_name").limit(1000).returns<PlayerRow[]>(),
 
-    supabase
-      .from("player_league_season_points")
-      .select("player_id, total_points")
-      .eq("league_id", id)
-      .order("total_points", { ascending: false })
-      .limit(1000)
-      .returns<{ player_id: string; total_points: number }[]>(),
-  ]);
+      supabase
+        .from("player_league_season_points")
+        .select("player_id, total_points")
+        .eq("league_id", id)
+        .order("total_points", { ascending: false })
+        .limit(1000)
+        .returns<{ player_id: string; total_points: number }[]>(),
+
+      // Last season scored under THIS league's rules, which is what the draft
+      // board ranks on — not a raw goal count.
+      supabase
+        .from("draft_values")
+        .select("player_id, points")
+        .eq("league_id", id)
+        .limit(2000)
+        .returns<{ player_id: string; points: number }[]>(),
+
+      nextGameweek
+        ? supabase.rpc("projected_points_for_league", {
+            p_league_id: id,
+            p_gameweek_id: nextGameweek.id,
+          })
+        : Promise.resolve({ data: [] }),
+    ]);
 
   const pointsBy = new Map((earned ?? []).map((row) => [row.player_id, Number(row.total_points)]));
+  const lastSeasonBy = new Map(
+    (lastSeason ?? []).map((row) => [row.player_id, Number(row.points)]),
+  );
+  const projectedBy = new Map(
+    ((projected ?? []) as { player_id: string; points: number | null }[]).map((row) => [
+      row.player_id,
+      row.points === null ? null : Number(row.points),
+    ]),
+  );
+
+  // Before a ball is kicked nobody has scored, so defaulting to this season's
+  // points would sort the whole list by zero. Fall back to last season until
+  // there is something to rank on.
+  const anyScored = (earned ?? []).some((row) => Number(row.total_points) !== 0);
+  const fallback = anyScored ? "points" : "last";
+
+  const SORTS = ["points", "last", "projected", "name"] as const;
+  type Sort = (typeof SORTS)[number];
+  const sort: Sort = SORTS.includes(filters.sort as Sort) ? (filters.sort as Sort) : fallback;
+
+  const valueFor = (playerId: string): number | null => {
+    if (sort === "last") return lastSeasonBy.get(playerId) ?? null;
+    if (sort === "projected") return projectedBy.get(playerId) ?? null;
+    return pointsBy.get(playerId) ?? null;
+  };
 
   const sorted = (candidates ?? []).slice().sort((a, b) => {
     if (sort === "name") return a.display_name.localeCompare(b.display_name);
-    // Never seen on the pitch sorts below someone on zero, who at least played.
-    return (pointsBy.get(b.id) ?? -1) - (pointsBy.get(a.id) ?? -1);
+    // No figure at all sorts below a genuine zero: someone who played and
+    // scored nothing is a different proposition from someone with no history.
+    return (valueFor(b.id) ?? -1) - (valueFor(a.id) ?? -1);
   });
+
+  // Named rather than counted vaguely: "47 have no record" invites the
+  // question this note exists to answer.
+  const withoutHistory = (candidates ?? []).filter(
+    (player) => !lastSeasonBy.has(player.id),
+  ).length;
 
   const offset = (page - 1) * PAGE_SIZE;
   const players = sorted.slice(offset, offset + PAGE_SIZE);
@@ -156,7 +218,7 @@ export default async function FreeAgentsPage({
     if (search) next.set("q", search);
     if (position) next.set("position", position);
     if (filters.club) next.set("club", filters.club);
-    if (sort !== "points") next.set("sort", sort);
+    if (sort !== fallback) next.set("sort", sort);
     if (targetPage > 1) next.set("page", String(targetPage));
     const value = next.toString();
     return value ? `?${value}` : "";
@@ -223,6 +285,10 @@ export default async function FreeAgentsPage({
         </select>
         <select name="sort" defaultValue={sort} suppressHydrationWarning className="select">
           <option value="points">Points this season</option>
+          <option value="last">Points last season</option>
+          <option value="projected">
+            {nextGameweek ? `Projected GW${nextGameweek.number}` : "Projected"}
+          </option>
           <option value="name">Name</option>
         </select>
         <button className="btn btn-ghost">Filter</button>
@@ -234,6 +300,20 @@ export default async function FreeAgentsPage({
         </p>
         <AvailabilityKey />
       </div>
+
+      {sort === "last" && withoutHistory > 0 ? (
+        <p className="notice text-xs">
+          {withoutHistory} of these have no last-season total. A dash means we hold no
+          Premier League record for them — players at promoted clubs and signings from
+          abroad — not that they scored nothing. Sort by projection to rank those too.
+        </p>
+      ) : null}
+
+      {sort === "points" && !anyScored ? (
+        <p className="notice text-xs">
+          No gameweek has been scored yet, so every total here is zero.
+        </p>
+      ) : null}
 
       <ul className="list">
         {players?.map((player) => {
@@ -257,9 +337,9 @@ export default async function FreeAgentsPage({
               <span className="text-sm dim">{player.clubs?.short_name ?? "—"}</span>
               <span
                 className="numeric w-10 text-right text-sm"
-                title="Points this season under this league's scoring rules"
+                title={COLUMN_HELP[sort]}
               >
-                {pointsBy.get(player.id) ?? "–"}
+                {sort === "name" ? "" : (valueFor(player.id) ?? "–")}
               </span>
 
               {/* suppressHydrationWarning: browser autofill stamps signature
