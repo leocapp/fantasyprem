@@ -76,10 +76,27 @@ def main(argv: list[str]) -> int:
             on_conflict="label",
         )
 
-        rows = db.select("seasons", select="id,label", label=f"eq.{label}")
+        rows = db.select("seasons", select="id,label,is_current", label=f"eq.{label}")
         if not rows:
             print("Could not create the season row", file=sys.stderr)
             return 1
+
+        # Assert rather than assume. Every fixture and stat below is written
+        # against this id, so resolving it to the current season silently
+        # relabels a whole historical season as this one — which is exactly
+        # what happened once, and nothing errored: the fixtures merged into
+        # the live gameweeks, every gameweek looked half-finished, and the
+        # draft rankings quietly lost their source data.
+        if len(rows) != 1 or rows[0].get("is_current"):
+            print(
+                f"Refusing to backfill into {rows[0].get('label')!r} "
+                f"(is_current={rows[0].get('is_current')}, {len(rows)} row(s) matched "
+                f"label {label!r}). A backfill must target a season that is not "
+                "the current one.",
+                file=sys.stderr,
+            )
+            return 1
+
         season_row_id = rows[0]["id"]
 
         # Last season's twenty aren't this season's twenty. Promoted and
