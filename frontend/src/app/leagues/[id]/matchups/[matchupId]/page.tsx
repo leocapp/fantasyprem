@@ -265,15 +265,39 @@ export default async function MatchupPage({
     );
   };
 
+  const { data: unplayedCount } = await supabase.rpc("gameweek_unplayed_fixtures", {
+    p_gameweek_id: matchup.gameweek_id,
+  });
+
+  const unplayed = Number(unplayedCount ?? 0);
+
   return (
     <main className="page">
       <div>
         <BackLink fallbackHref={`/leagues/${id}`} fallbackLabel="league" />
         <h1 className="page-title mt-1">Gameweek {matchup.gameweeks?.number}</h1>
         <p className="page-subtitle">
-          {played ? `Final · ${matchup.home_points} – ${matchup.away_points}` : "Not yet played"}
+          {unplayed > 0
+            ? `Provisional · ${matchup.home_points} – ${matchup.away_points}`
+            : played
+              ? `Final · ${matchup.home_points} – ${matchup.away_points}`
+              : "Not yet played"}
         </p>
       </div>
+
+      {/* The Premier League doesn't always play a full round in a week. A
+          deferred match still counts towards the gameweek it belongs to, so
+          this score can move long after the weekend — better to say so than to
+          have someone find their win has quietly become a loss. */}
+      {unplayed > 0 ? (
+        <p className="notice text-xs">
+          {unplayed === 1
+            ? "One match from this gameweek hasn't been played yet"
+            : `${unplayed} matches from this gameweek haven't been played yet`}
+          , so this score is not final. Points from those matches will be added to this
+          gameweek when they&apos;re played, and the result can change.
+        </p>
+      ) : null}
 
       <div className="flex flex-col gap-8 sm:flex-row">
         {renderSide(matchup.home_team_id, matchup.home_points)}

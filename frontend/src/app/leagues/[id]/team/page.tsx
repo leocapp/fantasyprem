@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import AvailabilityKey from "@/components/AvailabilityKey";
@@ -16,6 +17,14 @@ type LeagueRow = {
 
 type TeamRow = { id: string; name: string; owner_id: string };
 type GameweekRow = { id: string; number: number; deadline_at: string };
+
+type OpenSlotRow = {
+  gameweek_id: string;
+  gameweek_number: number;
+  player_id: string;
+  display_name: string;
+  kickoff_at: string | null;
+};
 
 type PlayerRow = {
   id: string;
@@ -65,10 +74,11 @@ export default async function TeamPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; message?: string }>;
+  searchParams: Promise<{ error?: string; message?: string; gw?: string }>;
 }) {
   const { id } = await params;
-  const { error, message } = await searchParams;
+  const query = await searchParams;
+  const { error, message } = query;
   const supabase = await createClient();
 
   const {
@@ -123,7 +133,34 @@ export default async function TeamPage({
           .maybeSingle<GameweekRow>()
       : { data: null };
 
-  const gameweek = scheduled[0] ?? byDeadline;
+  // Slots in an already-started gameweek whose own match hasn't been played —
+  // only ever non-empty when a club's fixture was deferred to a later date.
+  const { data: openSlots } = await supabase.rpc("open_lineup_slots", {
+    p_team_id: team.id,
+  });
+
+  const open = (openSlots ?? []) as OpenSlotRow[];
+
+  // ?gw= opens a past gameweek that still has an editable slot. Restricted to
+  // those: without the check this would be a way to rewrite any historical
+  // lineup by editing the URL.
+  const requestedNumber = Number(query.gw);
+  const requested = open.find((row) => row.gameweek_number === requestedNumber);
+
+  const { data: requestedGameweek } = requested
+    ? await supabase
+        .from("gameweeks")
+        .select("id, number, deadline_at")
+        .eq("id", requested.gameweek_id)
+        .maybeSingle<GameweekRow>()
+    : { data: null };
+
+  const gameweek = requestedGameweek ?? scheduled[0] ?? byDeadline;
+  const editingPast = Boolean(requestedGameweek);
+
+  const openGameweekNumbers = [...new Set(open.map((row) => row.gameweek_number))].sort(
+    (a, b) => a - b,
+  );
 
   // Everything below depends only on team and gameweek, so it goes out in one
   // batch rather than six sequential round trips.
@@ -294,6 +331,50 @@ export default async function TeamPage({
 
       {error ? <p className="notice notice-error">{error}</p> : null}
       {message ? <p className="notice notice-success">{message}</p> : null}
+
+      {/* Only shown when there is genuinely something to do: a gameweek that has
+          started but still holds one of your players whose match hasn't. In an
+          ordinary week this is absent entirely. */}
+      {open.length > 0 && !editingPast ? (
+        <div className="notice">
+          <p className="text-sm">
+            {openGameweekNumbers.length === 1
+              ? `Gameweek ${openGameweekNumbers[0]} is still open.`
+              : `Gameweeks ${openGameweekNumbers.join(", ")} are still open.`}{" "}
+            {open.length === 1
+              ? `${open[0].display_name} hasn't played their match yet`
+              : `${open.length} of your players haven't played their matches yet`}
+            , so you can still change {open.length === 1 ? "that slot" : "those slots"}.
+          </p>
+          <p className="mt-2 flex flex-wrap gap-2">
+            {openGameweekNumbers.map((number) => (
+              <Link
+                key={number}
+                href={`/leagues/${league.id}/team?gw=${number}`}
+                className="btn btn-ghost btn-sm"
+              >
+                Edit gameweek {number}
+              </Link>
+            ))}
+          </p>
+        </div>
+      ) : null}
+
+      {editingPast && gameweek ? (
+        <div className="notice">
+          <p className="text-sm">
+            Editing <strong>gameweek {gameweek.number}</strong>, which has already started.
+            Only players whose match is still to come can be moved — everyone else is
+            locked, and the captain is fixed. Points from a deferred match count towards
+            gameweek {gameweek.number}, so this matchup&apos;s result can still change.
+          </p>
+          <p className="mt-2">
+            <Link href={`/leagues/${league.id}/team`} className="btn btn-ghost btn-sm">
+              Back to the current gameweek
+            </Link>
+          </p>
+        </div>
+      ) : null}
 
       {gameweek && !lineup ? (
         <p className="text-sm muted">
