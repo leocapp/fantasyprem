@@ -499,12 +499,16 @@ def main() -> int:
             if number not in rounds or kickoff < rounds[number]:
                 rounds[number] = kickoff
 
+        # status is deliberately absent. This is an upsert, so including it
+        # would reset every gameweek to 'upcoming' on every run — which is
+        # exactly what stopped anything from ever being scored. New rows take
+        # the column default; existing rows keep whatever
+        # refresh_gameweek_statuses last derived.
         gameweek_rows = [
             {
                 "season_id": season_row_id,
                 "number": number,
                 "deadline_at": deadline_from(kickoff),
-                "status": "upcoming",
             }
             for number, kickoff in sorted(rounds.items())
         ]
@@ -557,6 +561,12 @@ def main() -> int:
             )
 
         db.upsert("fixtures", dedupe(fixture_rows, "sportmonks_id"), on_conflict="sportmonks_id")
+
+        # Now that the fixtures are current, let the database work out which
+        # gameweeks are upcoming, live or finished. Scoring keys off this.
+        changed = db.rpc("refresh_gameweek_statuses", {"p_season_id": season_row_id})
+        if changed:
+            print(f"  gameweek statuses updated: {changed}")
         print(f"  fixtures written: {len(fixture_rows)}")
 
         # --- match statistics --------------------------------------------

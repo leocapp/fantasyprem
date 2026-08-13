@@ -43,9 +43,29 @@ def main() -> int:
         return code
 
     with SupabaseRest(settings.supabase_url, settings.supabase_service_role_key) as db:
-        print("[2/5] Scoring completed gameweeks")
-        gameweeks = db.select(
-            "gameweeks", select="id,number,status", status="eq.complete", order="number"
+        # Live gameweeks are scored too, not just finished ones. That's what
+        # makes matchup scores move during a match — score_gameweek marks a
+        # matchup 'final' only once its gameweek is complete, 'live' before
+        # that. It also means a gameweek waiting on one postponed fixture keeps
+        # updating instead of showing nothing until the match is played.
+        print("[2/5] Scoring live and completed gameweeks")
+
+        # Restricted to the current season. The backfilled season's gameweeks
+        # are all complete and belong to no league, so scoring them is 38
+        # round trips an hour to do nothing.
+        seasons = db.select("seasons", select="id", is_current="is.true")
+        season_id = seasons[0]["id"] if seasons else None
+
+        gameweeks = (
+            db.select(
+                "gameweeks",
+                select="id,number,status",
+                season_id=f"eq.{season_id}",
+                status="in.(active,complete)",
+                order="number",
+            )
+            if season_id
+            else []
         )
         for gameweek in gameweeks:
             leagues = db.rpc("score_all", {"p_gameweek_id": gameweek["id"]})
