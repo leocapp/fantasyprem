@@ -171,7 +171,43 @@ def club_rows(teams: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def player_rows(squad: list[dict[str, Any]], club_id: str) -> list[dict[str, Any]]:
+def has_left(player: dict[str, Any], club_sportmonks_id: str) -> bool:
+    """Has this player moved on from the club whose squad we're reading?
+
+    The squad endpoints don't know. Both /squads/teams/{id} and the
+    season-scoped variant still list Casemiro at Manchester United months after
+    he signed in MLS, and the contract `end` field doesn't separate him — it's
+    null for him and also null for both of United's goalkeepers, so it means
+    "no end recorded", not "gone".
+
+    What does distinguish them is the player's own membership history. The club
+    they actually play for is the one whose spell started most recently:
+
+        Bruno Fernandes  team 14      start 2020-01-29   <- still United
+        Casemiro         team 239235  start 2026-07-22   <- left
+                         team 14      start 2022-08-22
+
+    Deliberately fails open. Without membership data we keep the player, because
+    wrongly dropping someone removes a real footballer from every draft board
+    and roster, while wrongly keeping one costs a manager a pick. The same
+    caution applies to a loan: the loan spell starts later, so the borrowing
+    club wins, which is what we want.
+    """
+    memberships = player.get("teams") or []
+
+    dated = [row for row in memberships if row.get("start")]
+    if not dated:
+        return False
+
+    latest = max(dated, key=lambda row: str(row["start"]))
+    return str(latest.get("team_id")) != str(club_sportmonks_id)
+
+
+def player_rows(
+    squad: list[dict[str, Any]],
+    club_id: str,
+    club_sportmonks_id: str,
+) -> list[dict[str, Any]]:
     rows = []
 
     for entry in squad:
@@ -180,6 +216,9 @@ def player_rows(squad: list[dict[str, Any]], club_id: str) -> list[dict[str, Any
 
         # Coaches and unknown position ids aren't draftable.
         if not position:
+            continue
+
+        if has_left(player, club_sportmonks_id):
             continue
 
         rows.append(
@@ -407,8 +446,14 @@ def main() -> int:
             club_id = club_ids.get(str(team["id"]))
             if not club_id:
                 continue
-            squad = api.get(f"/squads/teams/{team['id']}", include="player.position")
-            players.extend(player_rows(squad.get("data") or [], club_id))
+            # player.teams is what makes departures visible; without it the
+            # squad list includes players who left months ago.
+            squad = api.get(
+                f"/squads/teams/{team['id']}", include="player.position;player.teams"
+            )
+            players.extend(
+                player_rows(squad.get("data") or [], club_id, str(team["id"]))
+            )
 
         # Nothing tells us a player has left — they simply stop appearing in any
         # squad. So is_active has to be rebuilt from the squads just fetched
