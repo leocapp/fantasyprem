@@ -10,10 +10,11 @@ played. Never point it at a database with real results in it.
 Every rostered player in every league is guaranteed a stat row, so the
 scoring engine and matchup settlement have something to chew on.
 
-NOTE: running `python -m app.ingest.fpl` afterwards will overwrite the gameweek
-statuses and deadlines this script sets, because those come from the live feed.
-Fabricated stats and scores survive; the calendar resets. Re-run this script for
-the gameweek you're working on if that happens.
+NOTE: the deadline this script pushes into the past is rewritten by the next
+ingestion run, which takes deadlines from the live fixture list. The gameweek
+status now survives, because it's derived from whether the fixtures are marked
+finished — and this script marks them finished. Fabricated stats and scores
+survive too.
 """
 
 from __future__ import annotations
@@ -46,7 +47,15 @@ def fabricate(position: str, rng: random.Random) -> dict[str, Any]:
         "saves": 0,
         "yellow_cards": 0,
         "red_cards": 0,
-        "bonus": 0,
+        # Added in 0028 and scored by some leagues at fractions of a point.
+        # Omitting them made a simulated gameweek ignore most of the rules a
+        # league might actually be using.
+        "shots_on_target": 0,
+        "key_passes": 0,
+        "tackles": 0,
+        "interceptions": 0,
+        "big_chances_created": 0,
+        "duels_won": 0,
     }
 
     if minutes == 0:
@@ -69,8 +78,38 @@ def fabricate(position: str, rng: random.Random) -> dict[str, Any]:
     row["yellow_cards"] = 1 if rng.random() < 0.12 else 0
     row["red_cards"] = 1 if rng.random() < 0.01 else 0
 
-    if row["goals"] or row["assists"] or row["clean_sheet"]:
-        row["bonus"] = rng.choices([0, 1, 2, 3], weights=[60, 20, 12, 8])[0]
+    # Volume stats, scaled by how long they were on. Ranges are per-90 shapes
+    # from real football: a centre-back tackles and wins duels, a striker
+    # shoots. These occur thirty to fifty times more often than goals, which is
+    # exactly why a league that scores them needs to see them in a test.
+    share = minutes / 90
+
+    def volume(low: int, high: int) -> int:
+        return round(rng.randint(low, high) * share)
+
+    if position == "GK":
+        row["duels_won"] = volume(0, 2)
+    elif position == "DEF":
+        row["tackles"] = volume(1, 5)
+        row["interceptions"] = volume(1, 4)
+        row["duels_won"] = volume(3, 10)
+        row["key_passes"] = volume(0, 2)
+        row["shots_on_target"] = volume(0, 1)
+    elif position == "MID":
+        row["tackles"] = volume(1, 4)
+        row["interceptions"] = volume(0, 3)
+        row["duels_won"] = volume(2, 9)
+        row["key_passes"] = volume(0, 4)
+        row["shots_on_target"] = volume(0, 2)
+    else:
+        row["tackles"] = volume(0, 2)
+        row["interceptions"] = volume(0, 1)
+        row["duels_won"] = volume(2, 8)
+        row["key_passes"] = volume(0, 3)
+        row["shots_on_target"] = volume(0, 3)
+
+    if row["assists"] or rng.random() < 0.12:
+        row["big_chances_created"] = volume(0, 1)
 
     return row
 
