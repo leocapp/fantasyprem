@@ -141,6 +141,24 @@ def current_season(api: Sportmonks) -> dict[str, Any]:
     return season
 
 
+def dedupe(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    """Last row wins for each key.
+
+    Every upsert here targets a unique constraint, and Postgres rejects an
+    ON CONFLICT that would affect the same row twice within one statement:
+
+      ON CONFLICT DO UPDATE command cannot affect row a second time
+
+    That's a 500 from PostgREST and it kills the whole run, so any batch built
+    by looping over clubs needs this — a player or an absence can legitimately
+    appear under two of them.
+    """
+    unique: dict[Any, dict[str, Any]] = {}
+    for row in rows:
+        unique[row.get(key)] = row
+    return list(unique.values())
+
+
 def club_rows(teams: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {
@@ -374,7 +392,7 @@ def main() -> int:
         # --- clubs -------------------------------------------------------
         teams = api.paged(f"/teams/seasons/{season['id']}")
         clubs = club_rows(teams)
-        db.upsert("clubs", clubs, on_conflict="sportmonks_id")
+        db.upsert("clubs", dedupe(clubs, "sportmonks_id"), on_conflict="sportmonks_id")
         print(f"  clubs: {len(clubs)}")
 
         club_ids = {
@@ -410,9 +428,20 @@ def main() -> int:
             )
             return 1
 
+        # A player mid-transfer appears in both clubs' squads, and Postgres
+        # refuses an ON CONFLICT that would touch the same row twice in one
+        # statement — so a single transfer window breaks the whole run. Keeping
+        # the last listing is arbitrary but harmless: the next run corrects it
+        # once the provider drops them from the old squad, and the club only
+        # affects which fixture we read for them.
+        unique_players = dedupe(players, "sportmonks_id")
+        moved = len(players) - len(unique_players)
+        if moved:
+            print(f"  {moved} player(s) listed at two clubs — keeping the later listing")
+
         db.update("players", {"is_active": False}, is_active="is.true")
-        db.upsert("players", players, on_conflict="sportmonks_id")
-        print(f"  players: {len(players)} active, everyone else deactivated")
+        db.upsert("players", unique_players, on_conflict="sportmonks_id")
+        print(f"  players: {len(unique_players)} active, everyone else deactivated")
 
         player_ids = {
             row["sportmonks_id"]: row["id"]
@@ -527,7 +556,7 @@ def main() -> int:
                 }
             )
 
-        db.upsert("fixtures", fixture_rows, on_conflict="sportmonks_id")
+        db.upsert("fixtures", dedupe(fixture_rows, "sportmonks_id"), on_conflict="sportmonks_id")
         print(f"  fixtures written: {len(fixture_rows)}")
 
         # --- match statistics --------------------------------------------
