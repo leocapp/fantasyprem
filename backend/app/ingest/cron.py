@@ -45,10 +45,30 @@ def main() -> int:
     def elapsed(step: str) -> None:
         print(f"[{step} took {time.monotonic() - started:.0f}s total so far]")
 
+    # A provider outage used to stop everything. Steps 2 to 5 read the
+    # database rather than the API, so scoring, projections and reminders all
+    # work fine on whatever was last ingested — and refusing to run them means
+    # a Sportmonks outage becomes a scoring outage, which is a far worse
+    # failure for anyone playing.
+    #
+    # The run still ends non-zero so it shows up red rather than passing
+    # quietly with stale data.
     print("[1/5] Refreshing squads, fixtures and match statistics")
-    code = sportmonks.main()
-    if code != 0:
-        return code
+    ingest_failed = False
+
+    try:
+        if sportmonks.main([]) != 0:
+            ingest_failed = True
+    except Exception as exc:  # noqa: BLE001 - any provider failure, not ours
+        ingest_failed = True
+        print(f"  ingest failed: {exc}", file=sys.stderr)
+
+    if ingest_failed:
+        print(
+            "  continuing with the data already in the database — scoring and "
+            "reminders do not need the provider",
+            file=sys.stderr,
+        )
 
     with SupabaseRest(settings.supabase_url, settings.supabase_service_role_key) as db:
         # Live gameweeks are scored too, not just finished ones. That's what
@@ -98,7 +118,9 @@ def main() -> int:
     print("[5/5] Sending lineup reminders")
     code = reminders.main()
     elapsed("everything")
-    return code
+
+    # Non-zero if either half failed, so a degraded run is still visibly red.
+    return 1 if ingest_failed else code
 
 
 if __name__ == "__main__":

@@ -118,6 +118,12 @@ RETRY_STATUS = {429, 500, 502, 503, 504}
 # within a quarter of a day, which is well ahead of any deadline that matters.
 SQUAD_REFRESH_HOURS = 6
 
+# When the provider is down, every request fails the same way. Retrying each of
+# forty calls three times turns a clear outage into a ten-minute grind that ends
+# where it started — and long enough that the next scheduled run cancels this
+# one. After this many requests fail in a row, stop asking.
+CIRCUIT_BREAK_AFTER = 4
+
 
 def hours_since(db: SupabaseRest, key: str) -> float | None:
     """Hours since this step last completed, or None if it never has."""
@@ -164,6 +170,7 @@ class Sportmonks:
         self._client = httpx.Client(
             base_url=FOOTBALL, params={"api_token": token}, timeout=90.0
         )
+        self._consecutive_failures = 0
 
     def __enter__(self) -> Sportmonks:
         return self
@@ -172,6 +179,12 @@ class Sportmonks:
         self._client.close()
 
     def get(self, path: str, **params: str) -> dict[str, Any]:
+        if self._consecutive_failures >= CIRCUIT_BREAK_AFTER:
+            raise RuntimeError(
+                f"Giving up: {self._consecutive_failures} requests failed in a row. "
+                "The provider looks down rather than slow."
+            )
+
         reason = ""
 
         for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -184,9 +197,11 @@ class Sportmonks:
             else:
                 if response.status_code not in RETRY_STATUS:
                     if response.is_error:
+                        self._consecutive_failures += 1
                         raise RuntimeError(
                             f"{path} failed ({response.status_code}): {response.text[:300]}"
                         )
+                    self._consecutive_failures = 0
                     time.sleep(PAUSE_SECONDS)
                     return response.json()
 
@@ -197,6 +212,7 @@ class Sportmonks:
                 print(f"  {path}: {reason}, retrying in {wait:.0f}s", file=sys.stderr)
                 time.sleep(wait)
 
+        self._consecutive_failures += 1
         raise RuntimeError(f"{path} failed after {MAX_ATTEMPTS} attempts: {reason}")
 
     def paged(self, path: str, **params: str) -> list[dict[str, Any]]:
