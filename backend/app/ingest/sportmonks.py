@@ -1,6 +1,12 @@
 """Ingest Premier League data from Sportmonks.
 
     python -m app.ingest.sportmonks
+    python -m app.ingest.sportmonks --squads   # force the squad refresh
+
+Squads and injuries are refreshed every SQUAD_REFRESH_HOURS rather than on
+every run: they are two thirds of the job's runtime and they change far more
+slowly than the scores do. Fixtures, statuses and match statistics are fetched
+every time.
 
 Writes into the same tables the FPL job uses, keyed on sportmonks_id rather
 than external_id, so both providers can populate the same rows without
@@ -105,6 +111,30 @@ BACKOFF_SECONDS = 2.0
 # "busy". Anything else — a 401, a 404, a malformed query — will fail the same
 # way three times, so it should surface immediately.
 RETRY_STATUS = {429, 500, 502, 503, 504}
+
+# Squads change in a transfer window; injuries change daily. Refreshing both on
+# every run cost 320 of a 469-second run — forty requests for an answer that
+# almost never differs. Six hours means a new signing or a fresh injury shows up
+# within a quarter of a day, which is well ahead of any deadline that matters.
+SQUAD_REFRESH_HOURS = 6
+
+
+def hours_since(db: SupabaseRest, key: str) -> float | None:
+    """Hours since this step last completed, or None if it never has."""
+    rows = db.select("ingest_state", select="ran_at", key=f"eq.{key}")
+    if not rows:
+        return None
+
+    ran_at = datetime.fromisoformat(rows[0]["ran_at"].replace("Z", "+00:00"))
+    return (datetime.now(timezone.utc) - ran_at).total_seconds() / 3600
+
+
+def mark_ran(db: SupabaseRest, key: str) -> None:
+    db.upsert(
+        "ingest_state",
+        [{"key": key, "ran_at": datetime.now(timezone.utc).isoformat()}],
+        on_conflict="key",
+    )
 
 
 class Phase:
@@ -464,7 +494,12 @@ def stat_rows(
     return rows
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    # --squads forces the squad and injury refresh regardless of when it last
+    # ran. Wanted after a transfer deadline, or when someone reports a player
+    # who shouldn't be draftable.
+    force_squads = "--squads" in (argv if argv is not None else sys.argv[1:])
+
     settings = get_settings()
 
     if not settings.sportmonks_token:
@@ -502,6 +537,17 @@ def main() -> int:
         }
 
         # --- players -----------------------------------------------------
+        # Skipped on most runs. See SQUAD_REFRESH_HOURS: this is the expensive
+        # half of the job and the half that almost never changes.
+        age = hours_since(db, "squads")
+        refresh_squads = force_squads or age is None or age >= SQUAD_REFRESH_HOURS
+
+        if not refresh_squads:
+            phase.mark(
+                "squads and injuries",
+                f"skipped, refreshed {age:.1f}h ago (--squads to force)",
+            )
+
         # Two requests per club rather than one. Combining them via
         # include=squad on /teams/{id} looked like an easy saving and isn't:
         # that include doesn't exist, and Sportmonks answers 404 rather than
@@ -509,88 +555,104 @@ def main() -> int:
         #
         # player.teams is what makes departures visible; without it the squad
         # list includes players who left months ago.
-        players: list[dict[str, Any]] = []
-        sidelined_by_club: dict[str, list[dict[str, Any]]] = {}
+        player_ids: dict[str, str] = {}
 
-        for team in teams:
-            club_id = club_ids.get(str(team["id"]))
-            if not club_id:
-                continue
+        if refresh_squads:
+            players: list[dict[str, Any]] = []
+            sidelined_by_club: dict[str, list[dict[str, Any]]] = {}
 
-            squad = api.get(
-                f"/squads/teams/{team['id']}", include="player.position;player.teams"
+            for team in teams:
+                club_id = club_ids.get(str(team["id"]))
+                if not club_id:
+                    continue
+
+                squad = api.get(
+                    f"/squads/teams/{team['id']}", include="player.position;player.teams"
+                )
+                players.extend(
+                    player_rows(squad.get("data") or [], club_id, str(team["id"]))
+                )
+
+                detail = api.get(f"/teams/{team['id']}", include="sidelined.type")
+                sidelined_by_club[str(team["id"])] = (
+                    (detail.get("data") or {}).get("sidelined") or []
+                )
+
+            # Nothing tells us a player has left — they simply stop appearing in any
+            # squad. So is_active has to be rebuilt from the squads just fetched
+            # rather than only ever being set true, which is the same reset-then-
+            # reapply the absence list below uses. The FPL ingestion did this; the
+            # switch to Sportmonks lost it, and the active pool grew every run until
+            # it held roughly twice as many players as the league actually has.
+            #
+            # The floor is a circuit breaker: a partial API response would otherwise
+            # deactivate the entire league and empty every player list on the site.
+            if len(players) < MINIMUM_SQUAD_TOTAL:
+                print(
+                    f"Only {len(players)} players across {len(teams)} squads — expected at "
+                    f"least {MINIMUM_SQUAD_TOTAL}. Refusing to deactivate anyone on what "
+                    "looks like a partial response.",
+                    file=sys.stderr,
+                )
+                return 1
+
+            # A player mid-transfer appears in both clubs' squads, and Postgres
+            # refuses an ON CONFLICT that would touch the same row twice in one
+            # statement — so a single transfer window breaks the whole run. Keeping
+            # the last listing is arbitrary but harmless: the next run corrects it
+            # once the provider drops them from the old squad, and the club only
+            # affects which fixture we read for them.
+            unique_players = dedupe(players, "sportmonks_id")
+            moved = len(players) - len(unique_players)
+            if moved:
+                print(f"  {moved} player(s) listed at two clubs — keeping the later listing")
+
+            db.update("players", {"is_active": False}, is_active="is.true")
+            db.upsert("players", unique_players, on_conflict="sportmonks_id")
+            phase.mark("players", f"{len(unique_players)} active, everyone else deactivated")
+
+            # Needed immediately below: absences arrive keyed on Sportmonks ids.
+            player_ids = {
+                row["sportmonks_id"]: row["id"]
+                for row in db.select("players", select="id,sportmonks_id")
+                if row["sportmonks_id"]
+            }
+
+
+            # --- injuries and suspensions ------------------------------------
+            # Cleared first, then reapplied. Without the reset a player who has
+            # recovered keeps their old flag forever, because nothing tells us an
+            # absence ended — it just stops appearing in the list.
+            db.update(
+                "players",
+                {"availability": None, "news": None, "expected_return": None, "games_missed": None},
+                is_active="is.true",
             )
-            players.extend(
-                player_rows(squad.get("data") or [], club_id, str(team["id"]))
-            )
 
-            detail = api.get(f"/teams/{team['id']}", include="sidelined.type")
-            sidelined_by_club[str(team["id"])] = (
-                (detail.get("data") or {}).get("sidelined") or []
-            )
+            today = datetime.now(timezone.utc).date()
+            absences: list[dict[str, Any]] = []
 
-        # Nothing tells us a player has left — they simply stop appearing in any
-        # squad. So is_active has to be rebuilt from the squads just fetched
-        # rather than only ever being set true, which is the same reset-then-
-        # reapply the absence list below uses. The FPL ingestion did this; the
-        # switch to Sportmonks lost it, and the active pool grew every run until
-        # it held roughly twice as many players as the league actually has.
-        #
-        # The floor is a circuit breaker: a partial API response would otherwise
-        # deactivate the entire league and empty every player list on the site.
-        if len(players) < MINIMUM_SQUAD_TOTAL:
-            print(
-                f"Only {len(players)} players across {len(teams)} squads — expected at "
-                f"least {MINIMUM_SQUAD_TOTAL}. Refusing to deactivate anyone on what "
-                "looks like a partial response.",
-                file=sys.stderr,
-            )
-            return 1
+            for team in teams:
+                # Already fetched alongside the squad above.
+                sidelined = sidelined_by_club.get(str(team["id"]), [])
+                absences.extend(absence_rows(sidelined, player_ids, today))
 
-        # A player mid-transfer appears in both clubs' squads, and Postgres
-        # refuses an ON CONFLICT that would touch the same row twice in one
-        # statement — so a single transfer window breaks the whole run. Keeping
-        # the last listing is arbitrary but harmless: the next run corrects it
-        # once the provider drops them from the old squad, and the club only
-        # affects which fixture we read for them.
-        unique_players = dedupe(players, "sportmonks_id")
-        moved = len(players) - len(unique_players)
-        if moved:
-            print(f"  {moved} player(s) listed at two clubs — keeping the later listing")
+            for absence in absences:
+                player_id = absence.pop("id")
+                db.update("players", absence, id=f"eq.{player_id}")
 
-        db.update("players", {"is_active": False}, is_active="is.true")
-        db.upsert("players", unique_players, on_conflict="sportmonks_id")
-        phase.mark("players", f"{len(unique_players)} active, everyone else deactivated")
+            phase.mark("absences", f"{len(absences)} players injured or suspended")
+            mark_ran(db, "squads")
 
-        player_ids = {
-            row["sportmonks_id"]: row["id"]
-            for row in db.select("players", select="id,sportmonks_id")
-            if row["sportmonks_id"]
-        }
+        # The match-stats loop needs this too. Already built above when the
+        # squads were refreshed; read it now if that was skipped.
+        if not player_ids:
+            player_ids = {
+                row["sportmonks_id"]: row["id"]
+                for row in db.select("players", select="id,sportmonks_id")
+                if row["sportmonks_id"]
+            }
 
-        # --- injuries and suspensions ------------------------------------
-        # Cleared first, then reapplied. Without the reset a player who has
-        # recovered keeps their old flag forever, because nothing tells us an
-        # absence ended — it just stops appearing in the list.
-        db.update(
-            "players",
-            {"availability": None, "news": None, "expected_return": None, "games_missed": None},
-            is_active="is.true",
-        )
-
-        today = datetime.now(timezone.utc).date()
-        absences: list[dict[str, Any]] = []
-
-        for team in teams:
-            # Already fetched alongside the squad above.
-            sidelined = sidelined_by_club.get(str(team["id"]), [])
-            absences.extend(absence_rows(sidelined, player_ids, today))
-
-        for absence in absences:
-            player_id = absence.pop("id")
-            db.update("players", absence, id=f"eq.{player_id}")
-
-        phase.mark("absences", f"{len(absences)} players injured or suspended")
 
         # --- fixtures ----------------------------------------------------
         fixtures = api.paged(
@@ -779,4 +841,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))
