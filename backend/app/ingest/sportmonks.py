@@ -94,11 +94,23 @@ YELLOW_RED = 85
 # Their rate limit is per entity per hour. Pacing beats retrying.
 PAUSE_SECONDS = 0.15
 
+# A single slow response used to kill the whole run, and with it scoring,
+# projections and reminders. Squad responses in particular are large — they
+# carry each player's membership history, which is how departures are spotted —
+# so an occasional timeout is expected rather than exceptional.
+MAX_ATTEMPTS = 3
+BACKOFF_SECONDS = 2.0
+
+# Worth retrying: the request never got a real answer, or the answer was
+# "busy". Anything else — a 401, a 404, a malformed query — will fail the same
+# way three times, so it should surface immediately.
+RETRY_STATUS = {429, 500, 502, 503, 504}
+
 
 class Sportmonks:
     def __init__(self, token: str) -> None:
         self._client = httpx.Client(
-            base_url=FOOTBALL, params={"api_token": token}, timeout=45.0
+            base_url=FOOTBALL, params={"api_token": token}, timeout=90.0
         )
 
     def __enter__(self) -> Sportmonks:
@@ -108,11 +120,32 @@ class Sportmonks:
         self._client.close()
 
     def get(self, path: str, **params: str) -> dict[str, Any]:
-        response = self._client.get(path, params=params)
-        if response.is_error:
-            raise RuntimeError(f"{path} failed ({response.status_code}): {response.text[:300]}")
-        time.sleep(PAUSE_SECONDS)
-        return response.json()
+        reason = ""
+
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                response = self._client.get(path, params=params)
+            except httpx.TimeoutException as exc:
+                reason = f"timed out ({type(exc).__name__})"
+            except httpx.TransportError as exc:
+                reason = f"connection failed ({type(exc).__name__})"
+            else:
+                if response.status_code not in RETRY_STATUS:
+                    if response.is_error:
+                        raise RuntimeError(
+                            f"{path} failed ({response.status_code}): {response.text[:300]}"
+                        )
+                    time.sleep(PAUSE_SECONDS)
+                    return response.json()
+
+                reason = f"HTTP {response.status_code}"
+
+            if attempt < MAX_ATTEMPTS:
+                wait = BACKOFF_SECONDS * (2 ** (attempt - 1))
+                print(f"  {path}: {reason}, retrying in {wait:.0f}s", file=sys.stderr)
+                time.sleep(wait)
+
+        raise RuntimeError(f"{path} failed after {MAX_ATTEMPTS} attempts: {reason}")
 
     def paged(self, path: str, **params: str) -> list[dict[str, Any]]:
         """Follow pagination to the end. Their pages are 25 by default."""
