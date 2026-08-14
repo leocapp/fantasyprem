@@ -501,11 +501,11 @@ def main() -> int:
             if row["sportmonks_id"]
         }
 
-        # --- players and absences ----------------------------------------
-        # One request per club, not two. Squad and sidelined both hang off the
-        # club, and the two separate loops cost 119s and 201s in a measured run
-        # — over two thirds of the whole ingest, almost all of it round-trip
-        # latency rather than payload.
+        # --- players -----------------------------------------------------
+        # Two requests per club rather than one. Combining them via
+        # include=squad on /teams/{id} looked like an easy saving and isn't:
+        # that include doesn't exist, and Sportmonks answers 404 rather than
+        # omitting it, so there's nothing to fall back from.
         #
         # player.teams is what makes departures visible; without it the squad
         # list includes players who left months ago.
@@ -517,39 +517,17 @@ def main() -> int:
             if not club_id:
                 continue
 
-            detail = api.get(
-                f"/teams/{team['id']}",
-                include="squad.player.position;squad.player.teams;sidelined.type",
+            squad = api.get(
+                f"/squads/teams/{team['id']}", include="player.position;player.teams"
             )
-            data = detail.get("data") or {}
-            squad = data.get("squad")
+            players.extend(
+                player_rows(squad.get("data") or [], club_id, str(team["id"]))
+            )
 
-            # Fall back rather than silently ingesting an empty squad, which
-            # would trip the circuit breaker below and abort the run. Costs the
-            # two requests this change exists to avoid, but only for that club
-            # and only while the combined include is unavailable.
-            if squad is None:
-                print(
-                    f"  club {team['id']}: combined include returned no squad, "
-                    "falling back to separate requests",
-                    file=sys.stderr,
-                )
-                squad = (
-                    api.get(
-                        f"/squads/teams/{team['id']}",
-                        include="player.position;player.teams",
-                    ).get("data")
-                    or []
-                )
-                data["sidelined"] = (
-                    api.get(f"/teams/{team['id']}", include="sidelined.type")
-                    .get("data", {})
-                    .get("sidelined")
-                    or []
-                )
-
-            players.extend(player_rows(squad, club_id, str(team["id"])))
-            sidelined_by_club[str(team["id"])] = data.get("sidelined") or []
+            detail = api.get(f"/teams/{team['id']}", include="sidelined.type")
+            sidelined_by_club[str(team["id"])] = (
+                (detail.get("data") or {}).get("sidelined") or []
+            )
 
         # Nothing tells us a player has left — they simply stop appearing in any
         # squad. So is_active has to be rebuilt from the squads just fetched
