@@ -124,6 +124,18 @@ SQUAD_REFRESH_HOURS = 6
 # one. After this many requests fail in a row, stop asking.
 CIRCUIT_BREAK_AFTER = 4
 
+# The breaker above only catches a provider that is fully down. A provider that
+# is merely struggling — 503 on the first attempt, success on the second, every
+# time — never trips it, because each success resets the count. What that looks
+# like instead is a run that takes twelve minutes and gets cancelled, achieving
+# nothing.
+#
+# So there is also a wall-clock budget. Whatever the mix of slow and failed,
+# the ingest gives up once it has spent this long, and the rest of the job —
+# scoring, projections, reminders, none of which need the provider — still
+# runs.
+INGEST_BUDGET_SECONDS = 300.0
+
 
 def hours_since(db: SupabaseRest, key: str) -> float | None:
     """Hours since this step last completed, or None if it never has."""
@@ -171,6 +183,7 @@ class Sportmonks:
             base_url=FOOTBALL, params={"api_token": token}, timeout=90.0
         )
         self._consecutive_failures = 0
+        self._started = time.monotonic()
 
     def __enter__(self) -> Sportmonks:
         return self
@@ -179,6 +192,13 @@ class Sportmonks:
         self._client.close()
 
     def get(self, path: str, **params: str) -> dict[str, Any]:
+        spent = time.monotonic() - self._started
+        if spent > INGEST_BUDGET_SECONDS:
+            raise RuntimeError(
+                f"Giving up after {spent:.0f}s: the provider is responding too "
+                "slowly to finish within the budget."
+            )
+
         if self._consecutive_failures >= CIRCUIT_BREAK_AFTER:
             raise RuntimeError(
                 f"Giving up: {self._consecutive_failures} requests failed in a row. "
