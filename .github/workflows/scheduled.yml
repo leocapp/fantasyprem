@@ -32,9 +32,11 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    # The work itself takes well under a minute; anything longer means it's
-    # waiting for a runner, and failing fast frees the queue for the next run.
-    timeout-minutes: 8
+    # Was 8, on the assumption the work took under a minute. It doesn't when
+    # Sportmonks is slow: a measured run spent 119s on squads, 201s on the
+    # sidelined lists and 135s on fixtures, for 469s total. Being killed
+    # part-way through writing is a worse outcome than a slow run.
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4

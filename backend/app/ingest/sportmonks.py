@@ -170,12 +170,17 @@ class Sportmonks:
         raise RuntimeError(f"{path} failed after {MAX_ATTEMPTS} attempts: {reason}")
 
     def paged(self, path: str, **params: str) -> list[dict[str, Any]]:
-        """Follow pagination to the end. Their pages are 25 by default."""
+        """Follow pagination to the end. Their pages are 25 by default.
+
+        100 per page rather than 50: a season's fixtures took 135 seconds
+        across eight pages, and most of that is per-request latency rather than
+        payload size, so halving the number of requests halves the wait.
+        """
         rows: list[dict[str, Any]] = []
         page = 1
 
         while True:
-            payload = self.get(path, page=str(page), per_page="50", **params)
+            payload = self.get(path, page=str(page), per_page="100", **params)
             rows.extend(payload.get("data") or [])
 
             pagination = payload.get("pagination") or {}
@@ -496,20 +501,55 @@ def main() -> int:
             if row["sportmonks_id"]
         }
 
-        # --- players -----------------------------------------------------
+        # --- players and absences ----------------------------------------
+        # One request per club, not two. Squad and sidelined both hang off the
+        # club, and the two separate loops cost 119s and 201s in a measured run
+        # — over two thirds of the whole ingest, almost all of it round-trip
+        # latency rather than payload.
+        #
+        # player.teams is what makes departures visible; without it the squad
+        # list includes players who left months ago.
         players: list[dict[str, Any]] = []
+        sidelined_by_club: dict[str, list[dict[str, Any]]] = {}
+
         for team in teams:
             club_id = club_ids.get(str(team["id"]))
             if not club_id:
                 continue
-            # player.teams is what makes departures visible; without it the
-            # squad list includes players who left months ago.
-            squad = api.get(
-                f"/squads/teams/{team['id']}", include="player.position;player.teams"
+
+            detail = api.get(
+                f"/teams/{team['id']}",
+                include="squad.player.position;squad.player.teams;sidelined.type",
             )
-            players.extend(
-                player_rows(squad.get("data") or [], club_id, str(team["id"]))
-            )
+            data = detail.get("data") or {}
+            squad = data.get("squad")
+
+            # Fall back rather than silently ingesting an empty squad, which
+            # would trip the circuit breaker below and abort the run. Costs the
+            # two requests this change exists to avoid, but only for that club
+            # and only while the combined include is unavailable.
+            if squad is None:
+                print(
+                    f"  club {team['id']}: combined include returned no squad, "
+                    "falling back to separate requests",
+                    file=sys.stderr,
+                )
+                squad = (
+                    api.get(
+                        f"/squads/teams/{team['id']}",
+                        include="player.position;player.teams",
+                    ).get("data")
+                    or []
+                )
+                data["sidelined"] = (
+                    api.get(f"/teams/{team['id']}", include="sidelined.type")
+                    .get("data", {})
+                    .get("sidelined")
+                    or []
+                )
+
+            players.extend(player_rows(squad, club_id, str(team["id"])))
+            sidelined_by_club[str(team["id"])] = data.get("sidelined") or []
 
         # Nothing tells us a player has left — they simply stop appearing in any
         # squad. So is_active has to be rebuilt from the squads just fetched
@@ -564,8 +604,8 @@ def main() -> int:
         absences: list[dict[str, Any]] = []
 
         for team in teams:
-            detail = api.get(f"/teams/{team['id']}", include="sidelined.type")
-            sidelined = (detail.get("data") or {}).get("sidelined") or []
+            # Already fetched alongside the squad above.
+            sidelined = sidelined_by_club.get(str(team["id"]), [])
             absences.extend(absence_rows(sidelined, player_ids, today))
 
         for absence in absences:
