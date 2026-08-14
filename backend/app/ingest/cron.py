@@ -21,6 +21,7 @@ downstream cares which one filled the tables.
 from __future__ import annotations
 
 import sys
+import time
 
 from app.config import get_settings
 from app.ingest import projections, reminders, sportmonks
@@ -36,6 +37,13 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    # The workflow gives the job eight minutes. Printing each step's elapsed
+    # time means a run that creeps toward that says which step is creeping.
+    started = time.monotonic()
+
+    def elapsed(step: str) -> None:
+        print(f"[{step} took {time.monotonic() - started:.0f}s total so far]")
 
     print("[1/5] Refreshing squads, fixtures and match statistics")
     code = sportmonks.main()
@@ -72,6 +80,8 @@ def main() -> int:
             if leagues:
                 print(f"  gameweek {gameweek['number']}: {leagues} league(s)")
 
+        elapsed("through step 2")
+
         print("[3/5] Projecting the next gameweeks")
         code = projections.main()
         if code != 0:
@@ -83,8 +93,12 @@ def main() -> int:
         settled = db.rpc("execute_all_due_trades", {})
         print(f"  settled {settled} trade(s)")
 
+    elapsed("through step 4")
+
     print("[5/5] Sending lineup reminders")
-    return reminders.main()
+    code = reminders.main()
+    elapsed("everything")
+    return code
 
 
 if __name__ == "__main__":

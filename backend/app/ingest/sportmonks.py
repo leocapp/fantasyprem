@@ -107,6 +107,28 @@ BACKOFF_SECONDS = 2.0
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
+class Phase:
+    """Elapsed time per stage of the run.
+
+    A five-minute ingest and a forty-second one look identical in the logs
+    otherwise, and the difference is usually one endpoint being slow rather
+    than anything we changed. Cheap to print, and it turns "it was slow" into
+    a specific question.
+    """
+
+    def __init__(self) -> None:
+        self._start = time.monotonic()
+        self._last = self._start
+
+    def mark(self, label: str, detail: str = "") -> None:
+        now = time.monotonic()
+        print(f"  {label}: {detail} [{now - self._last:.1f}s]".replace(":  ", ": "))
+        self._last = now
+
+    def total(self) -> float:
+        return time.monotonic() - self._start
+
+
 class Sportmonks:
     def __init__(self, token: str) -> None:
         self._client = httpx.Client(
@@ -454,6 +476,7 @@ def main() -> int:
     ):
         season = current_season(api)
         print(f"Season {season['id']} ({season.get('name')})")
+        phase = Phase()
 
         seasons = db.select("seasons", select="id,label", is_current="is.true")
         if not seasons:
@@ -465,7 +488,7 @@ def main() -> int:
         teams = api.paged(f"/teams/seasons/{season['id']}")
         clubs = club_rows(teams)
         db.upsert("clubs", dedupe(clubs, "sportmonks_id"), on_conflict="sportmonks_id")
-        print(f"  clubs: {len(clubs)}")
+        phase.mark("clubs", str(len(clubs)))
 
         club_ids = {
             row["sportmonks_id"]: row["id"]
@@ -519,7 +542,7 @@ def main() -> int:
 
         db.update("players", {"is_active": False}, is_active="is.true")
         db.upsert("players", unique_players, on_conflict="sportmonks_id")
-        print(f"  players: {len(unique_players)} active, everyone else deactivated")
+        phase.mark("players", f"{len(unique_players)} active, everyone else deactivated")
 
         player_ids = {
             row["sportmonks_id"]: row["id"]
@@ -549,7 +572,7 @@ def main() -> int:
             player_id = absence.pop("id")
             db.update("players", absence, id=f"eq.{player_id}")
 
-        print(f"  absences: {len(absences)} players injured or suspended")
+        phase.mark("absences", f"{len(absences)} players injured or suspended")
 
         # --- fixtures ----------------------------------------------------
         fixtures = api.paged(
@@ -557,7 +580,7 @@ def main() -> int:
             filters=f"fixtureSeasons:{season['id']}",
             include="participants;round;state;scores",
         )
-        print(f"  fixtures returned: {len(fixtures)}")
+        phase.mark("fixtures returned", str(len(fixtures)))
 
         # --- gameweeks ---------------------------------------------------
         # Rounds are gameweeks. Sportmonks has no concept of a lineup deadline,
@@ -592,7 +615,7 @@ def main() -> int:
         ]
 
         db.upsert("gameweeks", gameweek_rows, on_conflict="season_id,number")
-        print(f"  gameweeks: {len(gameweek_rows)}")
+        phase.mark("gameweeks", str(len(gameweek_rows)))
 
         gameweek_ids = {
             row["number"]: row["id"]
@@ -645,7 +668,7 @@ def main() -> int:
         changed = db.rpc("refresh_gameweek_statuses", {"p_season_id": season_row_id})
         if changed:
             print(f"  gameweek statuses updated: {changed}")
-        print(f"  fixtures written: {len(fixture_rows)}")
+        phase.mark("fixtures written", str(len(fixture_rows)))
 
         # --- match statistics --------------------------------------------
         # Only played matches, and only ones we haven't already recorded.
@@ -672,7 +695,7 @@ def main() -> int:
             and fixture_row_ids.get(str(fixture["id"])) not in already
         ]
 
-        print(f"  fixtures needing stats: {len(played)}")
+        phase.mark("fixtures needing stats", str(len(played)))
 
         written = 0
         for fixture in played:
@@ -730,7 +753,8 @@ def main() -> int:
                     id=f"eq.{fixture_row_ids[str(fixture['id'])]}",
                 )
 
-        print(f"  player match rows: {written}")
+        phase.mark("player match rows", str(written))
+        print(f"  total: {phase.total():.1f}s")
 
     print("Done.")
     return 0
