@@ -56,13 +56,27 @@ const POSITION_ORDER: Record<string, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 }
 
 export const dynamic = "force-dynamic";
 
+const TABS = ["squad", "schedule"] as const;
+type Tab = (typeof TABS)[number];
+
 export default async function TeamDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; teamId: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { id, teamId } = await params;
+  const { tab } = await searchParams;
   const supabase = await createClient();
+
+  // In the URL rather than in component state: the page stays a server
+  // component, the back button works, and a tab is linkable — useful when
+  // someone wants to point at a rival's squad in the chat.
+  //
+  // Squad first, because "what has he actually got?" is the question people
+  // click a team name to answer.
+  const active: Tab = TABS.includes(tab as Tab) ? (tab as Tab) : "squad";
 
   const {
     data: { user },
@@ -159,7 +173,43 @@ export default async function TeamDetailPage({
         ) : null}
       </div>
 
-      <section>
+      {/* Counts on the tabs themselves, so the page answers "how big is his
+          squad" before you've clicked anything. */}
+      <nav className="flex gap-2">
+        {(
+          [
+            ["squad", `Squad (${squad.length})`],
+            ["schedule", `Schedule (${schedule.length})`],
+          ] as const
+        ).map(([key, label]) => (
+          <Link
+            key={key}
+            href={`/leagues/${league.id}/teams/${teamId}${key === "squad" ? "" : `?tab=${key}`}`}
+            scroll={false}
+            // Changing tab changes what's shown, it isn't a new destination —
+            // so it replaces the history entry instead of stacking one.
+            // Otherwise Back walks you through every tab you looked at before
+            // it finally returns to the league, which is the same trap the
+            // gameweek strip on the player page had.
+            replace
+            aria-current={active === key ? "page" : undefined}
+            className="rounded-md border px-3 py-1.5 text-sm transition-colors"
+            style={
+              active === key
+                ? {
+                    background: "var(--accent-soft)",
+                    borderColor: "var(--accent)",
+                    color: "var(--text)",
+                  }
+                : { borderColor: "var(--border)", color: "var(--text-muted)" }
+            }
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+
+      <section hidden={active !== "schedule"}>
         <h2 className="section-label">Season schedule</h2>
         <ul className="list mt-3">
           {schedule.map((matchup) => {
@@ -209,8 +259,18 @@ export default async function TeamDetailPage({
         </ul>
       </section>
 
-      <section>
-        <h2 className="section-label">Squad ({squad.length})</h2>
+      <section hidden={active !== "squad"}>
+        <h2 className="section-label">
+          Squad ({squad.length})
+          <span className="ml-2 font-normal dim">
+            {(["GK", "DEF", "MID", "FWD"] as const)
+              .map(
+                (position) =>
+                  `${squad.filter((row) => row.players?.position === position).length} ${position}`,
+              )
+              .join(" · ")}
+          </span>
+        </h2>
         <ul className="list mt-3">
           {squad.map((row) => (
             <li key={row.player_id} className="row">
