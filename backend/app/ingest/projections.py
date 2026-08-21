@@ -85,6 +85,25 @@ def shrunk(total: float, minutes: float, baseline_per_90: float) -> float:
     return (total + prior_goals) / (minutes + SHRINKAGE_MINUTES) * 90.0
 
 
+# Every stat the projection estimates a per-90 rate for. One list, used by the
+# database select, the positional baselines and the projection itself, because
+# these three drifting apart is exactly how the six stats added in 0028 ended
+# up unprojected for weeks while still being scored.
+RATE_FIELDS = (
+    "goals",
+    "assists",
+    "goals_conceded",
+    "saves",
+    "yellow_cards",
+    "shots_on_target",
+    "key_passes",
+    "tackles",
+    "interceptions",
+    "big_chances_created",
+    "duels_won",
+)
+
+
 def position_baselines(
     stats: list[dict[str, Any]], positions: dict[str, str]
 ) -> dict[str, dict[str, float]]:
@@ -96,15 +115,14 @@ def position_baselines(
         if not position:
             continue
         totals[position]["minutes"] += row.get("minutes") or 0
-        for field in ("goals", "assists", "goals_conceded", "saves", "yellow_cards"):
+        for field in RATE_FIELDS:
             totals[position][field] += row.get(field) or 0
 
     baselines: dict[str, dict[str, float]] = {}
     for position, values in totals.items():
         minutes = values["minutes"] or 1
         baselines[position] = {
-            field: values[field] / minutes * 90.0
-            for field in ("goals", "assists", "goals_conceded", "saves", "yellow_cards")
+            field: values[field] / minutes * 90.0 for field in RATE_FIELDS
         }
 
     return baselines
@@ -251,6 +269,18 @@ def project(
         "goals_conceded": round(conceded_rate * share, 2),
         "saves": round(rate("saves") * share * opponent.get("attack", 1.0), 2),
         "yellow_cards": round(rate("yellow_cards") * share, 3),
+        # Volume stats. Scaled by minutes but not by opponent strength: a
+        # defender makes tackles and wins duels at much the same rate whoever
+        # he's playing, unlike goals, which depend heavily on who's defending.
+        # Attacking output would arguably deserve the adjustment, but applying
+        # it to some and not others invites exactly the inconsistency this list
+        # exists to prevent.
+        "shots_on_target": round(rate("shots_on_target") * share, 2),
+        "key_passes": round(rate("key_passes") * share, 2),
+        "tackles": round(rate("tackles") * share, 2),
+        "interceptions": round(rate("interceptions") * share, 2),
+        "big_chances_created": round(rate("big_chances_created") * share, 3),
+        "duels_won": round(rate("duels_won") * share, 2),
         # Last season counts toward whether we have enough to project from.
         "matches_observed": matches_now + min(len(prior), PRIOR_FADES_AFTER),
     }
@@ -341,8 +371,7 @@ def main(argv: list[str] | None = None) -> int:
         stats = db.select(
             "player_match_stats",
             select=(
-                "player_id,fixture_id,minutes,goals,assists,goals_conceded,saves,"
-                "yellow_cards,expected_goals"
+                "player_id,fixture_id,minutes,expected_goals," + ",".join(RATE_FIELDS)
             ),
         )
 
