@@ -279,22 +279,19 @@ export default function PitchLineup({
             {starterCount}/11
           </span>
 
-          <span
-            className="numeric text-sm"
-            title={
-              `Projected total for this XI under your league's rules, with the ` +
-              `captain doubled.` +
-              (withoutProjection > 0
-                ? ` ${withoutProjection} player${withoutProjection === 1 ? " has" : "s have"} ` +
-                  `no projection yet and count as zero.`
-                : "")
-            }
-          >
-            {projectedTotal.toFixed(1)}
-            <span className="ml-1 text-xs dim">proj</span>
+          <span className="flex flex-col items-end leading-tight">
+            <span
+              className="numeric text-sm"
+              title="Projected total for this XI under your league's rules, captain doubled."
+            >
+              {projectedTotal.toFixed(1)}
+              <span className="ml-1 text-xs dim">projected</span>
+            </span>
+            {/* Spelled out rather than a symbol. A "+1?" badge meant nothing to
+                anyone who hadn't written it. */}
             {withoutProjection > 0 ? (
-              <span className="ml-1 text-xs" style={{ color: "var(--warning)" }}>
-                +{withoutProjection}?
+              <span className="text-[10px]" style={{ color: "var(--warning)" }}>
+                {withoutProjection} of 11 not projected
               </span>
             ) : null}
           </span>

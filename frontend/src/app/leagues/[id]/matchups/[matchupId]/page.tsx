@@ -264,20 +264,19 @@ export default async function MatchupPage({
           <span className="flex flex-col items-end">
             <span className="numeric text-lg">{played ? points : "–"}</span>
             {projection ? (
-              <span
-                className="numeric text-xs dim"
-                title={
-                  `Projected total for this XI under your league's rules, captain ` +
-                  `doubled.` +
-                  (projection.missing > 0
-                    ? ` ${projection.missing} starter${projection.missing === 1 ? "" : "s"} ` +
-                      `without a projection count as zero.`
-                    : "")
-                }
-              >
-                {projection.total.toFixed(1)} proj
+              <span className="flex flex-col items-end">
+                <span
+                  className="numeric text-xs dim"
+                  title="Projected total for this XI under your league's rules, captain doubled."
+                >
+                  {projection.total.toFixed(1)} projected
+                </span>
+                {/* Spelled out rather than a symbol. A "+1?" badge meant
+                    nothing to anyone who hadn't written it. */}
                 {projection.missing > 0 ? (
-                  <span style={{ color: "var(--warning)" }}> +{projection.missing}?</span>
+                  <span className="text-[10px]" style={{ color: "var(--warning)" }}>
+                    {projection.missing} of {11} not projected
+                  </span>
                 ) : null}
               </span>
             ) : null}
