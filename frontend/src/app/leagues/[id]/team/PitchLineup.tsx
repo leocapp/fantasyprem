@@ -184,6 +184,33 @@ export default function PitchLineup({
   // lineup is submittable.
   const canSave = starterCount === 11 && Boolean(captain) && Boolean(vice) && captain !== vice;
 
+  // What this XI is expected to score, captain doubled because that's how it
+  // will actually be scored. Recomputes as you swap players, which is the
+  // point: it turns "is this a better eleven?" into a number rather than a
+  // feeling.
+  //
+  // Players with no projection are counted as zero but reported separately —
+  // a total that silently omits three players would read as a weak lineup
+  // rather than an incomplete estimate.
+  const { projectedTotal, withoutProjection } = useMemo(() => {
+    let total = 0;
+    let missing = 0;
+
+    for (const id of selected) {
+      const player = byId.get(id);
+      if (!player) continue;
+
+      if (player.projected === null || player.projected === undefined) {
+        missing += 1;
+        continue;
+      }
+
+      total += player.projected * (id === captain ? 2 : 1);
+    }
+
+    return { projectedTotal: total, withoutProjection: missing };
+  }, [selected, captain, byId]);
+
   return (
     <div className="flex flex-col gap-4">
       {/* The server action reads these; the pitch is just a way of setting them. */}
@@ -250,6 +277,26 @@ export default function PitchLineup({
             }`}
           >
             {starterCount}/11
+          </span>
+
+          <span
+            className="numeric text-sm"
+            title={
+              `Projected total for this XI under your league's rules, with the ` +
+              `captain doubled.` +
+              (withoutProjection > 0
+                ? ` ${withoutProjection} player${withoutProjection === 1 ? " has" : "s have"} ` +
+                  `no projection yet and count as zero.`
+                : "")
+            }
+          >
+            {projectedTotal.toFixed(1)}
+            <span className="ml-1 text-xs dim">proj</span>
+            {withoutProjection > 0 ? (
+              <span className="ml-1 text-xs" style={{ color: "var(--warning)" }}>
+                +{withoutProjection}?
+              </span>
+            ) : null}
           </span>
 
           {/* The same submit as the one below the bench. On a phone the pitch

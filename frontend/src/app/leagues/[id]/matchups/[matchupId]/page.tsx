@@ -153,6 +153,21 @@ export default async function MatchupPage({
       : Promise.resolve({ data: [] as StatRow[] }),
   ]);
 
+  // One call for the whole gameweek rather than one per player. Scored under
+  // this league's rules, so it's directly comparable to the real points beside
+  // it once the matches start.
+  const { data: projections } = await supabase.rpc("projected_points_for_league", {
+    p_league_id: id,
+    p_gameweek_id: matchup.gameweek_id,
+  });
+
+  const projectedBy = new Map(
+    ((projections ?? []) as { player_id: string; points: number | null }[]).map((row) => [
+      row.player_id,
+      row.points === null ? null : Number(row.points),
+    ]),
+  );
+
   const pointsBy = new Map((scores ?? []).map((row) => [row.player_id, row.points]));
   const statsBy = new Map((stats ?? []).map((row) => [row.player_id, row]));
   const nameBy = new Map((teams ?? []).map((team) => [team.id, team.name]));
@@ -166,7 +181,42 @@ export default async function MatchupPage({
 
   const played = matchup.status !== "scheduled";
 
-  const renderSide = (teamId: string | null, points: number) => {
+  /**
+   * What a team's starting XI is expected to score, captain doubled.
+   *
+   * Uses the captain rather than whoever actually doubled: before kickoff the
+   * vice hasn't inherited anything, and the point of the number is to say what
+   * should happen, not what did.
+   */
+  const projectedFor = (teamId: string | null) => {
+    if (!teamId) return null;
+
+    const starters = (lineupBy.get(teamId)?.lineup_players ?? []).filter(
+      (row) => row.role === "starter",
+    );
+    if (starters.length === 0) return null;
+
+    const captainId = starters.find((row) => row.is_captain)?.player_id;
+
+    let total = 0;
+    let missing = 0;
+
+    for (const row of starters) {
+      const value = projectedBy.get(row.player_id);
+      if (value === null || value === undefined) {
+        missing += 1;
+        continue;
+      }
+      total += value * (row.player_id === captainId ? 2 : 1);
+    }
+
+    return { total, missing };
+  };
+
+  const homeProjection = projectedFor(matchup.home_team_id);
+  const awayProjection = projectedFor(matchup.away_team_id);
+
+  const renderSide = (teamId: string | null, points: number, projection: ReturnType<typeof projectedFor>) => {
     if (!teamId) {
       return (
         <section className="flex-1">
@@ -211,7 +261,27 @@ export default async function MatchupPage({
               </span>
             </span>
           </span>
-          <span className="numeric text-lg">{played ? points : "–"}</span>
+          <span className="flex flex-col items-end">
+            <span className="numeric text-lg">{played ? points : "–"}</span>
+            {projection ? (
+              <span
+                className="numeric text-xs dim"
+                title={
+                  `Projected total for this XI under your league's rules, captain ` +
+                  `doubled.` +
+                  (projection.missing > 0
+                    ? ` ${projection.missing} starter${projection.missing === 1 ? "" : "s"} ` +
+                      `without a projection count as zero.`
+                    : "")
+                }
+              >
+                {projection.total.toFixed(1)} proj
+                {projection.missing > 0 ? (
+                  <span style={{ color: "var(--warning)" }}> +{projection.missing}?</span>
+                ) : null}
+              </span>
+            ) : null}
+          </span>
         </div>
 
         <ul className="list mt-3">
@@ -299,9 +369,27 @@ export default async function MatchupPage({
         </p>
       ) : null}
 
+      {/* A projected winner is only interesting while the result is open. Once
+          the gameweek is final the actual score is right there and a
+          prediction of it would just be noise. */}
+      {homeProjection && awayProjection && !played ? (
+        <p className="text-xs dim">
+          {Math.abs(homeProjection.total - awayProjection.total) < 1
+            ? "Projected too close to call."
+            : `${
+                homeProjection.total > awayProjection.total
+                  ? nameBy.get(matchup.home_team_id)
+                  : nameBy.get(matchup.away_team_id ?? "")
+              } projected to win by ${Math.abs(
+                homeProjection.total - awayProjection.total,
+              ).toFixed(1)}.`}{" "}
+          Projections are mostly a guess about who plays, so treat a small gap as no gap.
+        </p>
+      ) : null}
+
       <div className="flex flex-col gap-8 sm:flex-row">
-        {renderSide(matchup.home_team_id, matchup.home_points)}
-        {renderSide(matchup.away_team_id, matchup.away_points)}
+        {renderSide(matchup.home_team_id, matchup.home_points, homeProjection)}
+        {renderSide(matchup.away_team_id, matchup.away_points, awayProjection)}
       </div>
 
       <p className="text-xs dim">
