@@ -136,6 +136,22 @@ CIRCUIT_BREAK_AFTER = 4
 # runs.
 INGEST_BUDGET_SECONDS = 300.0
 
+# A finished match should hold at least the 22 starters. Fewer means the
+# provider hadn't finished publishing when we read it, not that only nine
+# people played.
+MINIMUM_ROWS_PER_FIXTURE = 22
+
+# How long after kickoff a finished match keeps being re-read. Providers revise
+# statistics for hours afterwards — a late-awarded assist, a corrected
+# substitution — and the upsert is idempotent, so re-reading a handful of
+# recent fixtures is cheap insurance against a score that never updates.
+RESTAT_WINDOW = timedelta(hours=12)
+
+# When a match should be over regardless of what the fixture list claims.
+# Ninety minutes plus stoppage, half time and a margin — comfortably past the
+# end of any normal match, comfortably before the next one starts.
+MATCH_SETTLED_AFTER = timedelta(hours=2, minutes=45)
+
 
 def hours_since(db: SupabaseRest, key: str) -> float | None:
     """Hours since this step last completed, or None if it never has."""
@@ -799,17 +815,80 @@ def main(argv: list[str] | None = None) -> int:
             if row["sportmonks_id"]
         }
 
-        already = {
-            row["fixture_id"]
-            for row in db.select("player_match_stats", select="fixture_id")
-        }
+        # "Has any row at all" is not the same as "is complete". Sportmonks
+        # marks a match FT before its statistics are finalised, so the first
+        # ingest after the whistle records a partial set — and treating that
+        # fixture as done meant the players missing at that moment stayed
+        # missing for good. Exactly the bug the backfill had.
+        counts: dict[str, int] = defaultdict(int)
+        for row in db.select("player_match_stats", select="fixture_id"):
+            counts[row["fixture_id"]] += 1
 
-        played = [
-            fixture
-            for fixture in fixtures
-            if (fixture.get("state") or {}).get("short_name") in ("FT", "AET", "FT_PEN")
-            and fixture_row_ids.get(str(fixture["id"])) not in already
-        ]
+        now = datetime.now(timezone.utc)
+
+        def needs_stats(fixture: dict[str, Any]) -> bool:
+            row_id = fixture_row_ids.get(str(fixture["id"]))
+            if not row_id:
+                return False
+
+            recorded = counts.get(row_id, 0)
+            kickoff = fixture.get("starting_at")
+            started: datetime | None = None
+
+            if kickoff:
+                try:
+                    started = datetime.fromisoformat(str(kickoff).replace(" ", "T"))
+                    if started.tzinfo is None:
+                        started = started.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    started = None
+
+            finished_by_state = (fixture.get("state") or {}).get("short_name") in (
+                "FT",
+                "AET",
+                "FT_PEN",
+            )
+
+            # The paged /fixtures list serves a staler state than /fixtures/{id}:
+            # a match can report FT on the fixture endpoint while the list still
+            # says otherwise, and the most recently finished match is exactly
+            # the one that lags. Relying on the list alone left Fulham–Chelsea
+            # unscored through three ingests.
+            #
+            # So elapsed time is a second opinion. A match with no statistics
+            # long after it should have ended is worth asking about; if it
+            # genuinely hasn't been played the lineups come back empty, nothing
+            # is written, and the next run tries again.
+            long_over = (
+                started is not None
+                and recorded == 0
+                and (now - started) > MATCH_SETTLED_AFTER
+            )
+
+            if not finished_by_state and not long_over:
+                return False
+
+            # A real match yields at least the 22 starters.
+            if recorded < MINIMUM_ROWS_PER_FIXTURE:
+                return True
+
+            # Complete, but recent enough that the provider may still be
+            # revising it — late assists, corrected minutes. Re-reading a
+            # handful of fixtures costs little and the upsert is idempotent.
+            if started is None:
+                return False
+
+            return (now - started) < RESTAT_WINDOW
+
+        played = [fixture for fixture in fixtures if needs_stats(fixture)]
+
+        thin = sum(
+            1
+            for fixture in played
+            if counts.get(fixture_row_ids.get(str(fixture["id"])) or "", 0) > 0
+        )
+        if thin:
+            print(f"  {thin} fixture(s) already had stats but are being re-read")
 
         phase.mark("fixtures needing stats", str(len(played)))
 

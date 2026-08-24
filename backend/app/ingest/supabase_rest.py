@@ -6,12 +6,26 @@ never be imported by request-handling code.
 
 from __future__ import annotations
 
+import sys
+import time
 from collections.abc import Iterator, Sequence
 from typing import Any
 
 import httpx
 
 CHUNK_SIZE = 500
+
+# The connection to Supabase can fail transiently — a dropped TLS record, a
+# reset pool connection — and a single one of those used to abort the whole
+# job. Losing a projection run to one bad packet is a poor trade when the
+# request is idempotent and retrying costs a second.
+MAX_ATTEMPTS = 3
+BACKOFF_SECONDS = 1.0
+
+# Retried because the request may not have been processed at all, or the
+# server said it was temporarily unable. A 400 means our payload is wrong and
+# will be wrong three times.
+RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
 def _chunks(rows: Sequence[dict[str, Any]], size: int) -> Iterator[Sequence[dict[str, Any]]]:
@@ -56,6 +70,35 @@ class SupabaseRest:
     def close(self) -> None:
         self._client.close()
 
+    def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """One request, retried through transient transport and 5xx failures.
+
+        Every call here is idempotent — selects, and upserts keyed on a unique
+        constraint — so a retry cannot double-write. A response that arrives
+        and says something definite, including a 4xx, is returned to the caller
+        to deal with.
+        """
+        reason = ""
+
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                response = self._client.request(method, path, **kwargs)
+            except httpx.TransportError as exc:
+                # Covers timeouts, connection resets and TLS-level errors like
+                # SSLV3_ALERT_BAD_RECORD_MAC, which killed a live scoring run.
+                reason = f"{type(exc).__name__}: {exc}"
+            else:
+                if response.status_code not in RETRY_STATUS:
+                    return response
+                reason = f"HTTP {response.status_code}"
+
+            if attempt < MAX_ATTEMPTS:
+                wait = BACKOFF_SECONDS * (2 ** (attempt - 1))
+                print(f"  {path}: {reason}, retrying in {wait:.0f}s", file=sys.stderr)
+                time.sleep(wait)
+
+        raise RuntimeError(f"{path} failed after {MAX_ATTEMPTS} attempts: {reason}")
+
     def select(self, table: str, **params: str) -> list[dict[str, Any]]:
         """Read every matching row, following PostgREST's row limit.
 
@@ -69,7 +112,8 @@ class SupabaseRest:
         rows: list[dict[str, Any]] = []
 
         while True:
-            response = self._client.get(
+            response = self._send(
+                "GET",
                 f"/{table}",
                 params=params,
                 headers={"Range-Unit": "items", "Range": f"{offset}-{offset + page_size - 1}"},
@@ -87,7 +131,8 @@ class SupabaseRest:
         """Patch existing rows. Use this rather than upsert for partial changes:
         an upsert is an INSERT under the hood and must satisfy every NOT NULL
         column, even when the row already exists."""
-        response = self._client.patch(
+        response = self._send(
+            "PATCH",
             f"/{table}",
             params=filters,
             json=values,
@@ -98,7 +143,7 @@ class SupabaseRest:
 
     def rpc(self, function: str, args: dict[str, Any]) -> Any:
         """Call a Postgres function through PostgREST."""
-        response = self._client.post(f"/rpc/{function}", json=args)
+        response = self._send("POST", f"/rpc/{function}", json=args)
         if response.is_error:
             raise RuntimeError(f"{function} failed ({response.status_code}): {response.text}")
         return response.json()
@@ -109,7 +154,8 @@ class SupabaseRest:
             return 0
 
         for chunk in _chunks(rows, CHUNK_SIZE):
-            response = self._client.post(
+            response = self._send(
+                "POST",
                 f"/{table}",
                 params={"on_conflict": on_conflict},
                 json=list(chunk),
