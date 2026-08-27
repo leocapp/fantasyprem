@@ -115,7 +115,7 @@ def main() -> int:
 
     elapsed("through step 4")
 
-    print("[5/5] Sending lineup reminders")
+    print("[5/5] Sending emails")
     code = reminders.main()
     elapsed("everything")
 
