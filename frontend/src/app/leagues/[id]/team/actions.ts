@@ -31,3 +31,47 @@ export async function saveLineup(formData: FormData) {
   revalidatePath(path);
   redirect(`${path}?message=Lineup+saved.`);
 }
+
+export async function setInjuryReserve(formData: FormData) {
+  const leagueId = String(formData.get("league_id"));
+  const path = `/leagues/${leagueId}/team`;
+  const reserved = formData.get("reserved") === "1";
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_injury_reserve", {
+    p_league_id: leagueId,
+    p_player_id: String(formData.get("player_id")),
+    p_reserved: reserved,
+  });
+
+  if (error) {
+    redirect(`${path}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath(path);
+  redirect(
+    `${path}?message=${encodeURIComponent(
+      reserved
+        ? "Moved to injury reserve. Their spot is free until they're fit."
+        : "Back from injury reserve.",
+    )}`,
+  );
+}
+
+export async function dropPlayer(formData: FormData) {
+  const leagueId = String(formData.get("league_id"));
+  const path = `/leagues/${leagueId}/team`;
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("drop_player", {
+    p_league_id: leagueId,
+    p_player_id: String(formData.get("player_id")),
+  });
+
+  if (error) {
+    redirect(`${path}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath(path);
+  redirect(`${path}?message=Player+dropped.+Your+roster+is+legal+again.`);
+}

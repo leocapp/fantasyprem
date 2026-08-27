@@ -233,9 +233,11 @@ export default async function TeamDetailPage({
                   <span className="numeric w-12 text-xs dim">
                     GW{matchup.gameweeks?.number}
                   </span>
-                  <span className="w-4 text-xs dim">{opponentId ? (isHome ? "v" : "@") : ""}</span>
+                  <span className="w-4 text-xs dim">{opponentId ? (isHome ? "v" : "@") : "v"}</span>
                   <span className="flex-1 truncate text-sm">
-                    {opponentId ? (nameBy.get(opponentId) ?? "—") : "Bye"}
+                    {/* A bye is played against the league average, so it wins
+                        and loses like anything else on this list. */}
+                    {opponentId ? (nameBy.get(opponentId) ?? "—") : "The field"}
                   </span>
                   {played ? (
                     <>

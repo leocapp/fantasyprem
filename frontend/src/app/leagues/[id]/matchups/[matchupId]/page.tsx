@@ -104,30 +104,39 @@ export default async function MatchupPage({
 
   if (!matchup || matchup.league_id !== id) notFound();
 
-  const teamIds = [matchup.home_team_id, matchup.away_team_id].filter(
+  const isBye = matchup.away_team_id === null;
+
+  const sideIds = [matchup.home_team_id, matchup.away_team_id].filter(
     (value): value is string => Boolean(value),
   );
 
-  const [{ data: teams }, { data: lineups }] = await Promise.all([
-    supabase
-      .from("fantasy_teams")
-      .select("id, name, profiles (username, avatar_url)")
-      .in("id", teamIds)
-      .returns<TeamRow[]>(),
+  // Every team in the league, not only the ones named on this matchup: a bye is
+  // played against the field, so its score and its projection are both averages
+  // over everybody else.
+  const { data: teams } = await supabase
+    .from("fantasy_teams")
+    .select("id, name, profiles (username, avatar_url)")
+    .eq("league_id", id)
+    .returns<TeamRow[]>();
 
-    supabase
-      .from("lineups")
-      .select(
-        "id, fantasy_team_id, formation, carried_forward, lineup_players (player_id, role, is_captain, is_vice_captain, players (display_name, position, photo_url, clubs (short_name)))",
-      )
-      .eq("gameweek_id", matchup.gameweek_id)
-      .in("fantasy_team_id", teamIds)
-      .returns<LineupRow[]>(),
-  ]);
+  // Sequential rather than parallel with the above, because on a bye we can't
+  // know whose lineups to ask for until we know who is in the league.
+  const { data: lineups } = await supabase
+    .from("lineups")
+    .select(
+      "id, fantasy_team_id, formation, carried_forward, lineup_players (player_id, role, is_captain, is_vice_captain, players (display_name, position, photo_url, clubs (short_name)))",
+    )
+    .eq("gameweek_id", matchup.gameweek_id)
+    .in("fantasy_team_id", isBye ? (teams ?? []).map((team) => team.id) : sideIds)
+    .returns<LineupRow[]>();
 
-  const playerIds = (lineups ?? []).flatMap((lineup) =>
-    lineup.lineup_players.filter((row) => row.role === "starter").map((row) => row.player_id),
-  );
+  // Only the XIs actually rendered. The other teams' lineups are here to be
+  // averaged into a projection, and nobody needs their per-player stat lines.
+  const playerIds = (lineups ?? [])
+    .filter((lineup) => sideIds.includes(lineup.fantasy_team_id))
+    .flatMap((lineup) =>
+      lineup.lineup_players.filter((row) => row.role === "starter").map((row) => row.player_id),
+    );
 
   const [{ data: scores }, { data: stats }] = await Promise.all([
     playerIds.length
@@ -216,11 +225,62 @@ export default async function MatchupPage({
   const homeProjection = projectedFor(matchup.home_team_id);
   const awayProjection = projectedFor(matchup.away_team_id);
 
+  /**
+   * What the field is expected to score — the mean of every other team's XI.
+   *
+   * Averaged rather than summed: the manager is being measured against one
+   * typical rival, which is what the bye's actual points are an average of too.
+   */
+  const fieldProjection = (() => {
+    if (!isBye) return null;
+
+    const others = (teams ?? [])
+      .filter((team) => team.id !== matchup.home_team_id)
+      .map((team) => projectedFor(team.id))
+      .filter((value): value is { total: number; missing: number } => value !== null);
+
+    if (others.length === 0) return null;
+
+    return {
+      total: others.reduce((sum, row) => sum + row.total, 0) / others.length,
+      teams: others.length,
+    };
+  })();
+
+  const rivals = Math.max((teams ?? []).length - 1, 0);
+
+  // Whoever the home team is actually up against, real or averaged.
+  const opponentProjection = isBye ? fieldProjection : awayProjection;
+  const opponentName = isBye ? "The field" : nameBy.get(matchup.away_team_id ?? "");
+
   const renderSide = (teamId: string | null, points: number, projection: ReturnType<typeof projectedFor>) => {
     if (!teamId) {
       return (
         <section className="flex-1">
-          <h2 className="font-semibold dim">Bye week</h2>
+          <div className="flex items-center justify-between gap-2">
+            <span className="min-w-0">
+              <h2 className="truncate font-semibold">The field</h2>
+              <span className="block text-xs dim">
+                bye week · average of {rivals === 1 ? "the other team" : `the other ${rivals} teams`}
+              </span>
+            </span>
+            <span className="flex flex-col items-end">
+              <span className="numeric text-lg">{played ? points : "–"}</span>
+              {fieldProjection ? (
+                <span
+                  className="numeric text-xs dim"
+                  title="What a typical rival is projected to score this week."
+                >
+                  {fieldProjection.total.toFixed(1)} projected
+                </span>
+              ) : null}
+            </span>
+          </div>
+
+          <p className="mt-3 text-xs dim">
+            Nobody is scheduled against you this week, so you play the league average
+            instead. Beat it and it counts as a win.
+          </p>
         </section>
       );
     }
@@ -371,16 +431,16 @@ export default async function MatchupPage({
       {/* A projected winner is only interesting while the result is open. Once
           the gameweek is final the actual score is right there and a
           prediction of it would just be noise. */}
-      {homeProjection && awayProjection && !played ? (
+      {homeProjection && opponentProjection && !played ? (
         <p className="text-xs dim">
-          {Math.abs(homeProjection.total - awayProjection.total) < 1
+          {Math.abs(homeProjection.total - opponentProjection.total) < 1
             ? "Projected too close to call."
             : `${
-                homeProjection.total > awayProjection.total
+                homeProjection.total > opponentProjection.total
                   ? nameBy.get(matchup.home_team_id)
-                  : nameBy.get(matchup.away_team_id ?? "")
+                  : opponentName
               } projected to win by ${Math.abs(
-                homeProjection.total - awayProjection.total,
+                homeProjection.total - opponentProjection.total,
               ).toFixed(1)}.`}{" "}
           Projections are mostly a guess about who plays, so treat a small gap as no gap.
         </p>

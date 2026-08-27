@@ -208,11 +208,7 @@ export default async function LeaguePage({
                       className="flex-1"
                     />
                     <span className="numeric text-xs muted">
-                      {played
-                        ? `${matchup.home_points} – ${matchup.away_points}`
-                        : matchup.away_team_id
-                          ? "v"
-                          : "bye"}
+                      {played ? `${matchup.home_points} – ${matchup.away_points}` : "v"}
                     </span>
                     <span className="flex-1">
                       {matchup.away_team_id ? (
@@ -221,7 +217,12 @@ export default async function LeaguePage({
                           username={managerOf.get(matchup.away_team_id)}
                           avatarUrl={avatarOf.get(matchup.away_team_id)}
                         />
-                      ) : null}
+                      ) : (
+                        // A bye has a real opponent now: the average of everyone
+                        // else. It gets a score like any other fixture, so it
+                        // shouldn't read as an empty week.
+                        <span className="text-sm dim">The field</span>
+                      )}
                     </span>
                   </Link>
                 </li>

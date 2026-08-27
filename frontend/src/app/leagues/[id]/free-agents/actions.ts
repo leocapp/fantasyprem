@@ -12,17 +12,24 @@ export async function swapPlayer(formData: FormData) {
   const separator = query ? "&" : "?";
 
   const dropId = String(formData.get("drop_player_id") ?? "");
-
-  if (!dropId) {
-    redirect(`${base}${query}${separator}error=Choose+a+player+to+drop.`);
-  }
+  const addId = String(formData.get("add_player_id"));
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("swap_player", {
-    p_league_id: leagueId,
-    p_drop_player_id: dropId,
-    p_add_player_id: String(formData.get("add_player_id")),
-  });
+
+  // No drop chosen means "sign him into a spare slot", which only exists if
+  // somebody is on injury reserve. Rather than refusing here on a guess, ask
+  // the database: claim_player counts the active roster against the position
+  // quota and comes back with a message that says which position is full.
+  const { error } = dropId
+    ? await supabase.rpc("swap_player", {
+        p_league_id: leagueId,
+        p_drop_player_id: dropId,
+        p_add_player_id: addId,
+      })
+    : await supabase.rpc("claim_player", {
+        p_league_id: leagueId,
+        p_add_player_id: addId,
+      });
 
   if (error) {
     redirect(`${base}${query}${separator}error=${encodeURIComponent(error.message)}`);

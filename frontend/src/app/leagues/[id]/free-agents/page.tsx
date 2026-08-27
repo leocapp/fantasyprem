@@ -14,7 +14,13 @@ type TeamRow = { id: string; name: string };
 
 type RosterRow = {
   player_id: string;
-  players: { display_name: string; position: string; is_active: boolean } | null;
+  reserved_at: string | null;
+  players: {
+    display_name: string;
+    position: string;
+    is_active: boolean;
+    availability: string | null;
+  } | null;
 };
 
 type PlayerRow = {
@@ -87,7 +93,7 @@ export default async function FreeAgentsPage({
 
   const { data: roster } = await supabase
     .from("roster_entries")
-    .select("player_id, players (display_name, position, is_active)")
+    .select("player_id, reserved_at, players (display_name, position, is_active, availability)")
     .eq("fantasy_team_id", team.id)
     .is("dropped_at", null)
     .returns<RosterRow[]>();
@@ -224,6 +230,14 @@ export default async function FreeAgentsPage({
 
   const returnQuery = queryFor(page);
 
+  // Somebody on injury reserve leaves a slot open, which means a signing needs
+  // no matching release. Same rule as the team page and the database: the
+  // reservation only holds while the provider still has him out.
+  const hasOpenSlot = (roster ?? []).some(
+    (row) =>
+      row.reserved_at !== null && ["i", "s"].includes(row.players?.availability ?? ""),
+  );
+
   // Any player can be dropped now — the database checks whether the resulting
   // squad still meets its minimums.
   const myPlayers = (roster ?? [])
@@ -356,7 +370,9 @@ export default async function FreeAgentsPage({
                   suppressHydrationWarning
                   className="select select-sm max-w-[9rem]"
                 >
-                  <option value="">Drop…</option>
+                  {/* Leaving this alone signs the player without releasing
+                      anyone, which only works while a reserve slot is open. */}
+                  <option value="">{hasOpenSlot ? "Nobody — use free slot" : "Drop…"}</option>
                   {myPlayers.map((row) => (
                     <option key={row.player_id} value={row.player_id}>
                       {row.players?.position} {row.players?.display_name}

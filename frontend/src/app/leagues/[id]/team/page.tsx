@@ -5,6 +5,7 @@ import AvailabilityKey from "@/components/AvailabilityKey";
 import { formatDeadline } from "@/lib/datetime";
 import { createClient } from "@/lib/supabase/server";
 
+import InjuryReserve, { type ReserveEntry } from "./InjuryReserve";
 import PitchLineup, { type Formation, type SquadPlayer } from "./PitchLineup";
 import { saveLineup } from "./actions";
 
@@ -13,6 +14,7 @@ type LeagueRow = {
   name: string;
   status: string;
   carry_forward_lineups: boolean;
+  roster_size: number;
 };
 
 type TeamRow = { id: string; name: string; owner_id: string };
@@ -42,6 +44,7 @@ type PlayerRow = {
 
 type RosterRow = {
   player_id: string;
+  reserved_at: string | null;
   players: PlayerRow | null;
 };
 
@@ -89,7 +92,7 @@ export default async function TeamPage({
 
   const { data: league } = await supabase
     .from("leagues")
-    .select("id, name, status, carry_forward_lineups")
+    .select("id, name, status, carry_forward_lineups, roster_size")
     .eq("id", id)
     .maybeSingle<LeagueRow>();
 
@@ -169,7 +172,7 @@ export default async function TeamPage({
       supabase
         .from("roster_entries")
         .select(
-          "player_id, players (id, display_name, position, photo_url, club_id, shirt_number, availability, news, expected_return, is_active, clubs (short_name))",
+          "player_id, reserved_at, players (id, display_name, position, photo_url, club_id, shirt_number, availability, news, expected_return, is_active, clubs (short_name))",
         )
         .eq("fantasy_team_id", team.id)
         .is("dropped_at", null)
@@ -280,7 +283,42 @@ export default async function TeamPage({
   const captainId = lineup?.lineup_players.find((row) => row.is_captain)?.player_id;
   const viceId = lineup?.lineup_players.find((row) => row.is_vice_captain)?.player_id;
 
-  const players = (roster ?? [])
+  // ------------------------------------------------------- injury reserve ----
+  // The same rule the database uses, and for the same reason: reserved_at is
+  // the manager's intent, but the spot only stops counting while the provider
+  // still has him out. A cleared player takes his roster place back here too,
+  // without anything having to notice he recovered.
+  const OUT = new Set(["i", "s"]);
+  const isReserved = (row: RosterRow) =>
+    row.reserved_at !== null && OUT.has(row.players?.availability ?? "");
+
+  const entryOf = (player: PlayerRow): ReserveEntry => ({
+    id: player.id,
+    name: player.display_name,
+    position: player.position,
+    club: player.clubs?.short_name ?? "—",
+    availability: player.availability,
+    news: player.news,
+    expectedReturn: player.expected_return,
+  });
+
+  const reservedPlayer = (roster ?? []).find(isReserved)?.players ?? null;
+
+  // Reserved, then cleared to play: he is occupying a normal slot again and
+  // his team is very likely one over the limit.
+  const returnedPlayer =
+    (roster ?? []).find((row) => row.reserved_at !== null && !isReserved(row))?.players ?? null;
+
+  const activeRows = (roster ?? []).filter((row) => !isReserved(row));
+  const overBy = activeRows.length - league.roster_size;
+
+  const eligibleToReserve = (roster ?? [])
+    .filter((row) => !isReserved(row) && OUT.has(row.players?.availability ?? ""))
+    .map((row) => row.players)
+    .filter((player): player is PlayerRow => Boolean(player))
+    .map(entryOf);
+
+  const players = activeRows
     .map((row) => row.players)
     .filter((player): player is PlayerRow => Boolean(player))
     .sort(
@@ -412,6 +450,20 @@ export default async function TeamPage({
           />
         </form>
       )}
+
+      {/* Below the pitch rather than on it. Reserving somebody is roster
+          management, not team selection — it happens once a month, and it
+          shouldn't compete for attention with the XI. */}
+      {league.status === "active" ? (
+        <InjuryReserve
+          leagueId={league.id}
+          reserved={reservedPlayer ? entryOf(reservedPlayer) : null}
+          returned={returnedPlayer ? entryOf(returnedPlayer) : null}
+          eligible={eligibleToReserve}
+          overBy={overBy}
+          droppable={players.map(entryOf)}
+        />
+      ) : null}
     </main>
   );
 }
