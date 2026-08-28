@@ -33,9 +33,24 @@ type LineupPlayer = {
     display_name: string;
     position: string;
     photo_url: string | null;
+    club_id: string | null;
     clubs: { short_name: string } | null;
   } | null;
 };
+
+type MatchFixture = {
+  home_club_id: string;
+  away_club_id: string;
+  kickoff_at: string;
+};
+
+/**
+ * Ninety minutes plus stoppage, half time and a margin. Mirrors
+ * MATCH_SETTLED_AFTER in the ingestion, and for the same reason: past this
+ * point a match without statistics is a data problem, not a match in progress,
+ * and saying "playing" would be a lie the page tells indefinitely.
+ */
+const MATCH_WINDOW_MS = (2 * 60 + 45) * 60 * 1000;
 
 type LineupRow = {
   id: string;
@@ -124,7 +139,7 @@ export default async function MatchupPage({
   const { data: lineups } = await supabase
     .from("lineups")
     .select(
-      "id, fantasy_team_id, formation, carried_forward, lineup_players (player_id, role, is_captain, is_vice_captain, players (display_name, position, photo_url, clubs (short_name)))",
+      "id, fantasy_team_id, formation, carried_forward, lineup_players (player_id, role, is_captain, is_vice_captain, players (display_name, position, photo_url, club_id, clubs (short_name)))",
     )
     .eq("gameweek_id", matchup.gameweek_id)
     .in("fantasy_team_id", isBye ? (teams ?? []).map((team) => team.id) : sideIds)
@@ -170,6 +185,26 @@ export default async function MatchupPage({
     p_gameweek_id: matchup.gameweek_id,
   });
 
+  // Kickoff per club, so a player whose match is underway can be marked as
+  // such. Statistics only land at full time, so without this a striker who has
+  // just scored is indistinguishable from one who was left on the bench — both
+  // show a dash, and the obvious conclusion is that the site is broken.
+  const { data: matchFixtures } = await supabase
+    .from("fixtures")
+    .select("home_club_id, away_club_id, kickoff_at")
+    .eq("gameweek_id", matchup.gameweek_id)
+    .returns<MatchFixture[]>();
+
+  const kickoffByClub = new Map<string, number>();
+  for (const fixture of matchFixtures ?? []) {
+    const at = new Date(String(fixture.kickoff_at).replace(" ", "T")).getTime();
+    if (Number.isNaN(at)) continue;
+    for (const club of [fixture.home_club_id, fixture.away_club_id]) {
+      const known = kickoffByClub.get(club);
+      if (known === undefined || at < known) kickoffByClub.set(club, at);
+    }
+  }
+
   const projectedBy = new Map(
     ((projections ?? []) as { player_id: string; points: number | null }[]).map((row) => [
       row.player_id,
@@ -189,6 +224,25 @@ export default async function MatchupPage({
   const lineupBy = new Map((lineups ?? []).map((lineup) => [lineup.fantasy_team_id, lineup]));
 
   const played = matchup.status !== "scheduled";
+
+  /**
+   * Is this player's club match underway right now?
+   *
+   * "Kicked off, and we have no statistics for him yet." The absence of a row
+   * is the honest end condition — the ingestion writes a row for everyone in
+   * the squad list, including unused substitutes, so a row appearing means that
+   * fixture has been read. The window stops a fixture that never ingested from
+   * claiming to be in progress for the rest of the season.
+   */
+  const isPlaying = (playerId: string, clubId: string | null | undefined) => {
+    if (!clubId) return false;
+
+    const kickoff = kickoffByClub.get(clubId);
+    if (kickoff === undefined) return false;
+
+    const since = Date.now() - kickoff;
+    return since >= 0 && since < MATCH_WINDOW_MS && !statsBy.has(playerId);
+  };
 
   /**
    * What a team's starting XI is expected to score, captain doubled.
@@ -371,14 +425,32 @@ export default async function MatchupPage({
                       ×2
                     </span>
                   ) : null}
+                  {/* Statistics only arrive at full time, so this is what
+                      separates "hasn't scored" from "hasn't finished". */}
+                  {isPlaying(row.player_id, row.players?.club_id) ? (
+                    <span
+                      className="rounded px-1 text-[10px] font-bold"
+                      style={{ background: "rgb(16 185 129 / 0.2)", color: "var(--accent-hover)" }}
+                      title="His match is under way. Points land when it finishes."
+                    >
+                      LIVE
+                    </span>
+                  ) : null}
                 </span>
                 <span className="block truncate text-xs dim">
                   {row.players?.position} · {row.players?.clubs?.short_name ?? "—"} ·{" "}
-                  {statSummary(statsBy.get(row.player_id))}
+                  {isPlaying(row.player_id, row.players?.club_id)
+                    ? "playing now"
+                    : statSummary(statsBy.get(row.player_id))}
                 </span>
               </Link>
+              {/* Zero is a claim: he played and earned nothing. A dash is the
+                  absence of one. So the number appears only where a score has
+                  actually been computed for him — which covers not kicked off,
+                  still playing, finished but not yet ingested, and a blank
+                  gameweek, all of which were previously reported as zero. */}
               <span className="numeric text-sm">
-                {played
+                {pointsBy.has(row.player_id)
                   ? (pointsBy.get(row.player_id) ?? 0) * (row.player_id === doubledId ? 2 : 1)
                   : "–"}
               </span>
