@@ -48,6 +48,8 @@ type RosterRow = {
   players: PlayerRow | null;
 };
 
+type PreviousLineupRow = LineupRow & { gameweeks: { number: number } | null };
+
 type LineupRow = {
   id: string;
   formation: string;
@@ -209,6 +211,35 @@ export default async function TeamPage({
         .returns<{ id: string; short_name: string }[]>(),
     ]);
 
+  // Nobody should face an empty pitch after their first week. When this
+  // gameweek has no lineup yet, the last one saved becomes the starting point —
+  // the same XI carry_forward_lineup would use if they never came back.
+  //
+  // Fetched whole and sorted here rather than ordered in the query: PostgREST
+  // can't order parent rows by an embedded column, and a season is at most
+  // thirty-eight rows per team.
+  const { data: history } =
+    gameweek && !lineup
+      ? await supabase
+          .from("lineups")
+          .select(
+            "id, formation, lineup_players (player_id, role, is_captain, is_vice_captain), gameweeks!inner (number)",
+          )
+          .eq("fantasy_team_id", team.id)
+          .returns<PreviousLineupRow[]>()
+      : { data: null };
+
+  const previous =
+    gameweek && history
+      ? (history
+          .filter((row) => (row.gameweeks?.number ?? 0) < gameweek.number)
+          .sort((a, b) => (b.gameweeks?.number ?? 0) - (a.gameweeks?.number ?? 0))[0] ?? null)
+      : null;
+
+  const previousNumber = previous?.gameweeks?.number ?? null;
+  const source: LineupRow | null = lineup ?? previous;
+  const prefilled = !lineup && previous !== null;
+
   const clubName = new Map((clubs ?? []).map((club) => [club.id, club.short_name]));
 
   // club id -> earliest kickoff this gameweek. A player is locked from that
@@ -280,8 +311,6 @@ export default async function TeamPage({
 
   const projectedBy = new Map(projections);
 
-  const captainId = lineup?.lineup_players.find((row) => row.is_captain)?.player_id;
-  const viceId = lineup?.lineup_players.find((row) => row.is_vice_captain)?.player_id;
 
   // ------------------------------------------------------- injury reserve ----
   // The same rule the database uses, and for the same reason: reserved_at is
@@ -359,9 +388,30 @@ export default async function TeamPage({
     };
   });
 
-  const starterIds = (lineup?.lineup_players ?? [])
+  // A saved lineup is shown exactly as saved, locked players and all — it is a
+  // record of a decision. A prefill is a proposal, so anyone it can't legally
+  // propose is dropped and the slot left open: players since transferred away,
+  // players now on injury reserve, and — in a gameweek already underway —
+  // anyone whose match has kicked off, since save_lineup would refuse them.
+  const selectable = new Set(squad.filter((player) => !player.locked).map((player) => player.id));
+
+  const sourceStarters = (source?.lineup_players ?? [])
     .filter((row) => row.role === "starter")
     .map((row) => row.player_id);
+
+  const starterIds = prefilled
+    ? sourceStarters.filter((playerId) => selectable.has(playerId))
+    : sourceStarters;
+
+  const dropped = prefilled ? sourceStarters.length - starterIds.length : 0;
+
+  // The armband follows only if the player it belonged to is still in the XI.
+  const proposed = new Set(starterIds);
+  const rawCaptain = source?.lineup_players.find((row) => row.is_captain)?.player_id;
+  const rawVice = source?.lineup_players.find((row) => row.is_vice_captain)?.player_id;
+
+  const captainId = !prefilled || (rawCaptain && proposed.has(rawCaptain)) ? rawCaptain : undefined;
+  const viceId = !prefilled || (rawVice && proposed.has(rawVice)) ? rawVice : undefined;
 
   return (
     <main className="page">
@@ -414,11 +464,24 @@ export default async function TeamPage({
         </div>
       ) : null}
 
+      {/* The pitch is populated from the last saved lineup, so this text is
+          what stops a filled-in pitch reading as a saved one. With carry-forward
+          on it genuinely is what will happen; with it off, it is only a
+          suggestion, and the difference is worth a sentence. */}
       {gameweek && !lineup ? (
         <p className="text-sm muted">
-          {league.carry_forward_lineups
-            ? "No lineup set for this gameweek yet — last week's will be used if you don't change it."
-            : "No lineup set for this gameweek. Without one you'll score nothing."}
+          {prefilled
+            ? league.carry_forward_lineups
+              ? `Showing your gameweek ${previousNumber} lineup. It will be used as it stands unless you change it.`
+              : `Showing your gameweek ${previousNumber} lineup as a starting point — nothing is saved for gameweek ${gameweek.number} until you press save, and without a saved lineup you'll score nothing.`
+            : league.carry_forward_lineups
+              ? "No lineup set for this gameweek yet — last week's will be used if you don't change it."
+              : "No lineup set for this gameweek. Without one you'll score nothing."}
+          {dropped > 0
+            ? ` ${
+                dropped === 1 ? "One place is" : `${dropped} places are`
+              } empty: those players have either left your squad or already kicked off.`
+            : ""}
         </p>
       ) : null}
 
@@ -439,7 +502,7 @@ export default async function TeamPage({
           <PitchLineup
             players={squad}
             formations={formations ?? []}
-            initialFormation={lineup?.formation ?? "4-4-2"}
+            initialFormation={source?.formation ?? "4-4-2"}
             initialStarters={starterIds}
             initialCaptain={captainId ?? null}
             initialVice={viceId ?? null}

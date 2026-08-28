@@ -32,8 +32,14 @@ export default function CopyField({
     <div className="flex flex-col gap-1">
       {label ? <span className="text-xs text-[var(--text-dim)]">{label}</span> : null}
       <div className="flex gap-2">
+        {/* suppressHydrationWarning: Chrome's autofill stamps field_signature
+            and friends onto any input it thinks it could fill, before React
+            hydrates, and the mismatch is reported as our bug. Same reason the
+            free agents form carries it. A join code is not something anyone
+            wants autofilled, but the browser doesn't know that. */}
         <input
           readOnly
+          suppressHydrationWarning
           value={value}
           onFocus={(event) => event.currentTarget.select()}
           className={`input flex-1 ${mono ? "numeric tracking-widest" : ""}`}

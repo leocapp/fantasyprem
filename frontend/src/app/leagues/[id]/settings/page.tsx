@@ -53,7 +53,7 @@ const STAT_LABELS: Record<string, string> = {
   assists: "Assist",
   clean_sheet: "Clean sheet",
   goals_conceded_2: "Every 2 goals conceded",
-  saves_3: "Every 3 saves",
+  saves: "Save",
   penalties_saved: "Penalty saved",
   penalties_missed: "Penalty missed",
   own_goals: "Own goal",
