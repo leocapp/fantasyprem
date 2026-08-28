@@ -55,6 +55,14 @@ body {
     max-width: 40rem;
   }
 
+  /* For pages that are a layout rather than a document. 56rem is a good
+     measure for reading — roughly 90 characters — which is why it's the
+     default, but the lineup screen is a pitch beside a squad list and that
+     column width has nothing to do with line length. */
+  .page-wide {
+    max-width: 82rem;
+  }
+
   .page-title {
     font-size: 1.75rem;
     font-weight: 700;

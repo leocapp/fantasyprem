@@ -136,7 +136,7 @@ export default function InjuryReserve({
 
       <p className="mt-2 text-xs dim">
         One spot, for a player that has been ruled out — injured or suspended, not
-        doubtful. PLayer doesn&apos;t count against your roster, so you can sign a replacement
+        doubtful. He doesn&apos;t count against your roster, so you can sign a replacement
         in the same position. When he&apos;s fit he takes his spot back automatically and
         somebody has to go.
       </p>

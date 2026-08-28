@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import AvailabilityKey from "@/components/AvailabilityKey";
 import { formatDeadline } from "@/lib/datetime";
+import { fetchAll } from "@/lib/fetchAll";
 import { createClient } from "@/lib/supabase/server";
 
 import InjuryReserve, { type ReserveEntry } from "./InjuryReserve";
@@ -50,9 +51,33 @@ type RosterRow = {
 
 type PreviousLineupRow = LineupRow & { gameweeks: { number: number } | null };
 
+/**
+ * "3 minutes ago", "yesterday". Computed here on the server and handed down as
+ * a finished string, because doing it inside the client component would put
+ * Date.now() in a render path — the exact hydration mismatch React warns about,
+ * and one this codebase has already been bitten by twice.
+ */
+function savedAgo(value: string | null | undefined): string | null {
+  if (!value) return null;
+
+  const then = new Date(String(value).replace(" ", "T")).getTime();
+  if (Number.isNaN(then)) return null;
+
+  const minutes = Math.round((Date.now() - then) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+
+  const days = Math.round(hours / 24);
+  return days === 1 ? "yesterday" : `${days} days ago`;
+}
+
 type LineupRow = {
   id: string;
   formation: string;
+  updated_at?: string;
   lineup_players: {
     player_id: string;
     role: string;
@@ -189,7 +214,9 @@ export default async function TeamPage({
       gameweek
         ? supabase
             .from("lineups")
-            .select("id, formation, lineup_players (player_id, role, is_captain, is_vice_captain)")
+            .select(
+              "id, formation, updated_at, lineup_players (player_id, role, is_captain, is_vice_captain)",
+            )
             .eq("fantasy_team_id", team.id)
             .eq("gameweek_id", gameweek.id)
             .maybeSingle<LineupRow>()
@@ -290,11 +317,31 @@ export default async function TeamPage({
 
   const lastGameweek = new Map((previousScores ?? []).map((row) => [row.player_id, row]));
 
+
   // Our projection for the coming gameweek, under this league's rules. A squad
   // is roughly fifteen players, so one call each is cheap and they go together.
   const rosterIds = (roster ?? [])
     .map((row) => row.players?.id)
     .filter((value): value is string => Boolean(value));
+
+  // Season totals, so the squad can be sorted by who has actually delivered.
+  // Scoped to this roster and paged: a thirty-man squad over thirty-eight
+  // gameweeks is 1,140 rows, and PostgREST would silently return the first
+  // thousand — which would look like a few players quietly having a bad season.
+  const seasonRows = rosterIds.length
+    ? await fetchAll<{ player_id: string; points: number }>(
+        supabase
+          .from("player_gameweek_scores")
+          .select("player_id, points")
+          .eq("league_id", id)
+          .in("player_id", rosterIds),
+      )
+    : [];
+
+  const seasonPoints = new Map<string, number>();
+  for (const row of seasonRows) {
+    seasonPoints.set(row.player_id, (seasonPoints.get(row.player_id) ?? 0) + Number(row.points));
+  }
 
   const projections = gameweek
     ? await Promise.all(
@@ -385,6 +432,11 @@ export default async function TeamPage({
       projected: projectedBy.get(player.id) ?? null,
       lastPoints: last ? Number(last.points) : null,
       lastMinutes: last?.breakdown?.minutes ?? null,
+      // Rounded: a sum of two-decimal scores turns into 41.900000000000006 the
+      // moment floating point gets involved, and nobody wants that in a list.
+      seasonPoints: seasonPoints.has(player.id)
+        ? Math.round(seasonPoints.get(player.id)! * 10) / 10
+        : null,
     };
   });
 
@@ -414,7 +466,7 @@ export default async function TeamPage({
   const viceId = !prefilled || (rawVice && proposed.has(rawVice)) ? rawVice : undefined;
 
   return (
-    <main className="page">
+    <main className="page page-wide">
       <h1 className="page-title">{team.name}</h1>
 
       {error ? <p className="notice notice-error">{error}</p> : null}
@@ -468,15 +520,16 @@ export default async function TeamPage({
           what stops a filled-in pitch reading as a saved one. With carry-forward
           on it genuinely is what will happen; with it off, it is only a
           suggestion, and the difference is worth a sentence. */}
+      {/* The pitch header says whether anything is saved. This says what happens
+          if it stays that way, which is a different question and the one that
+          actually costs points. */}
       {gameweek && !lineup ? (
         <p className="text-sm muted">
-          {prefilled
-            ? league.carry_forward_lineups
-              ? `Showing your gameweek ${previousNumber} lineup. It will be used as it stands unless you change it.`
-              : `Showing your gameweek ${previousNumber} lineup as a starting point — nothing is saved for gameweek ${gameweek.number} until you press save, and without a saved lineup you'll score nothing.`
-            : league.carry_forward_lineups
-              ? "No lineup set for this gameweek yet — last week's will be used if you don't change it."
-              : "No lineup set for this gameweek. Without one you'll score nothing."}
+          {league.carry_forward_lineups
+            ? prefilled
+              ? `If you don't save, your gameweek ${previousNumber} lineup carries over as it stands.`
+              : "If you don't set one, last week's lineup carries over."
+            : "Without a saved lineup you'll score nothing this week."}
           {dropped > 0
             ? ` ${
                 dropped === 1 ? "One place is" : `${dropped} places are`
@@ -510,6 +563,8 @@ export default async function TeamPage({
             teamName={team.name}
             leagueId={league.id}
             deadlineLabel={formatDeadline(gameweek.deadline_at)}
+            savedLabel={savedAgo(lineup?.updated_at)}
+            prefilled={prefilled}
           />
         </form>
       )}

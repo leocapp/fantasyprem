@@ -23,7 +23,48 @@ export type SquadPlayer = {
   projected: number | null;
   lastPoints: number | null;
   lastMinutes: number | null;
+  /** Everything they've scored this season under this league's rules. */
+  seasonPoints: number | null;
 };
+
+const SORTS = [
+  { key: "position", label: "Position" },
+  { key: "projected", label: "Projected" },
+  { key: "last", label: "Last week" },
+  { key: "season", label: "Season" },
+  { key: "name", label: "Name" },
+] as const;
+
+type SortKey = (typeof SORTS)[number]["key"];
+
+/**
+ * Compare two squad members under the chosen sort.
+ *
+ * Nulls always sink, whichever way the sort runs: a player with no projection
+ * is not a player projected to score nothing, and floating him to the top would
+ * be the list lying about him.
+ */
+function compareBy(sort: SortKey) {
+  const desc = (a: number | null, b: number | null) => {
+    if (a === null && b === null) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    return b - a;
+  };
+
+  return (a: SquadPlayer, b: SquadPlayer) => {
+    switch (sort) {
+      case "projected":
+        return desc(a.projected, b.projected) || a.name.localeCompare(b.name);
+      case "last":
+        return desc(a.lastPoints, b.lastPoints) || a.name.localeCompare(b.name);
+      case "season":
+        return desc(a.seasonPoints, b.seasonPoints) || a.name.localeCompare(b.name);
+      default:
+        return a.name.localeCompare(b.name);
+    }
+  };
+}
 
 export type Formation = {
   code: string;
@@ -78,6 +119,8 @@ export default function PitchLineup({
   deadlineLabel,
   teamName,
   leagueId,
+  savedLabel,
+  prefilled,
 }: {
   players: SquadPlayer[];
   formations: Formation[];
@@ -89,6 +132,10 @@ export default function PitchLineup({
   deadlineLabel: string;
   teamName: string;
   leagueId: string;
+  /** "2 hours ago" for a lineup saved against this gameweek, null if never. */
+  savedLabel: string | null;
+  /** The pitch was populated from an earlier week rather than from a save. */
+  prefilled: boolean;
 }) {
   const byId = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
 
@@ -114,6 +161,15 @@ export default function PitchLineup({
   const [captain, setCaptain] = useState<string | null>(initialCaptain);
   const [vice, setVice] = useState<string | null>(initialVice);
   const [picking, setPicking] = useState<{ position: keyof Assignments; index: number } | null>(null);
+  const [sort, setSort] = useState<SortKey>("position");
+
+  // "position" is the order the server already sent — by line, then name, so it
+  // reads like a team sheet. Everything else re-sorts a copy; the incoming array
+  // is a prop and must not be mutated.
+  const ordered = useMemo(
+    () => (sort === "position" ? players : [...players].sort(compareBy(sort))),
+    [players, sort],
+  );
 
   const selected = useMemo(
     () => new Set(Object.values(assignments).flat().filter((id): id is string => Boolean(id))),
@@ -169,8 +225,10 @@ export default function PitchLineup({
     setPicking(null);
   }
 
+  // Same order as the squad list. Everyone here is the same position, so the
+  // "position" sort falls through to name — which is what it did before.
   const eligible = picking
-    ? players.filter(
+    ? ordered.filter(
         (player) =>
           player.position === picking.position &&
           !selected.has(player.id) &&
@@ -182,7 +240,41 @@ export default function PitchLineup({
 
   // One condition, two buttons — they must never disagree about whether the
   // lineup is submittable.
-  const canSave = starterCount === 11 && Boolean(captain) && Boolean(vice) && captain !== vice;
+  const legal = starterCount === 11 && Boolean(captain) && Boolean(vice) && captain !== vice;
+
+  // Has anything moved since the state the page was rendered with? When the
+  // pitch was prefilled from an earlier week that state was never saved, so
+  // "unchanged" still needs saving — hence the separate savedLabel check below.
+  const dirty = useMemo(() => {
+    if (formationCode !== initialFormation) return true;
+    if (captain !== initialCaptain || vice !== initialVice) return true;
+    if (selected.size !== initialStarters.length) return true;
+    return initialStarters.some((id) => !selected.has(id));
+  }, [formationCode, captain, vice, selected, initialFormation, initialStarters, initialCaptain, initialVice]);
+
+  // Three states, and the button is the main place people will read them:
+  // never saved, saved and untouched, saved and edited since.
+  const settled = savedLabel !== null && !dirty;
+  const canSave = legal && !settled;
+
+  const buttonLabel = settled ? "Saved" : savedLabel !== null ? "Save changes" : "Save lineup";
+
+  const buttonHint = settled
+    ? "This lineup is saved. Move a player to enable saving again."
+    : legal
+      ? undefined
+      : "Needs eleven players, a captain and a vice-captain";
+
+  const status = settled
+    ? { tone: "saved" as const, text: `Saved ${savedLabel}.` }
+    : savedLabel !== null
+      ? { tone: "unsaved" as const, text: "Unsaved changes — save before the deadline." }
+      : {
+          tone: "unsaved" as const,
+          text: prefilled
+            ? `Not saved for gameweek ${gameweekNumber} yet — this is last week's lineup.`
+            : `Not saved for gameweek ${gameweekNumber} yet.`,
+        };
 
   // What this XI is expected to score, captain doubled because that's how it
   // will actually be scored. Recomputes as you swap players, which is the
@@ -255,6 +347,26 @@ export default function PitchLineup({
           <p className="text-xs dim">
             {teamName} · captain fixed {deadlineLabel} · each player locks at kickoff
           </p>
+
+          {/* The one line that says whether any of this counts. It sits under
+              the heading rather than beside the button because a full pitch and
+              an empty one look the same from across a room, and since the pitch
+              is prefilled from last week, "looks finished" stopped meaning
+              "is finished". */}
+          <p
+            className="mt-1.5 flex items-center gap-1.5 text-xs font-medium"
+            style={{ color: status.tone === "saved" ? "var(--accent-hover)" : "var(--warning)" }}
+          >
+            <span
+              aria-hidden
+              className="inline-block h-1.5 w-1.5 rounded-full"
+              style={{
+                backgroundColor:
+                  status.tone === "saved" ? "var(--accent-hover)" : "var(--warning)",
+              }}
+            />
+            {status.text}
+          </p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -300,17 +412,15 @@ export default function PitchLineup({
               and the bench together are well over a screen, so the button that
               commits the change can easily be somewhere you never scroll to —
               and an unsaved lineup looks identical to a saved one. */}
-          <button
-            className="btn btn-primary btn-sm"
-            disabled={!canSave}
-            title={canSave ? undefined : "Needs eleven players, a captain and a vice-captain"}
-          >
-            Save
+          <button className="btn btn-primary btn-sm" disabled={!canSave} title={buttonHint}>
+            {settled ? "Saved" : "Save"}
           </button>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
+      {/* 24rem, not 19: the squad line carries club, fixture, projected, last
+          week and season now, and at the old width it was all ellipsis. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <div className="flex flex-col gap-4">
       {/* Pitch */}
       <div
@@ -464,7 +574,10 @@ export default function PitchLineup({
                         expectedReturn={player.expectedReturn}
                       />
                     </span>
-                    <span className="block truncate text-xs dim">
+                    {/* Wraps too, and carries the season total: this is the
+                        moment you're choosing between players, so it should
+                        show at least as much as the reference list does. */}
+                    <span className="block text-xs leading-snug dim">
                       {player.club} · {player.fixture}
                       {player.projected !== null ? ` · proj ${player.projected}` : ""}
                       {player.lastPoints !== null
@@ -472,6 +585,7 @@ export default function PitchLineup({
                             player.lastMinutes !== null ? `, ${player.lastMinutes}'` : ""
                           }`
                         : ""}
+                      {player.seasonPoints !== null ? ` · season ${player.seasonPoints}` : ""}
                     </span>
                   </span>
                 </button>
@@ -487,8 +601,8 @@ export default function PitchLineup({
         </div>
       ) : null}
 
-          <button className="btn btn-primary" disabled={!canSave}>
-            Save lineup
+          <button className="btn btn-primary" disabled={!canSave} title={buttonHint}>
+            {buttonLabel}
           </button>
 
           {starterCount !== 11 || !captain || !vice ? (
@@ -496,15 +610,36 @@ export default function PitchLineup({
               Needs eleven players, a captain and a vice-captain. Tap a shirt to fill a slot, then
               use the C and V badges.
             </p>
+          ) : settled ? (
+            <p className="text-xs dim">
+              This is what will be played. Move anyone and the button turns back into
+              &ldquo;Save changes&rdquo; — nothing counts until you press it.
+            </p>
           ) : null}
         </div>
 
-        {/* Squad reference: fixed order, always visible, never reshuffles as
-            you pick. Sorted by position so it reads like a team sheet. */}
+        {/* Squad reference: always visible, and it doesn't reshuffle as you
+            pick — only when you change the sort yourself. Position is the
+            default because it reads like a team sheet. */}
         <aside className="lg:sticky lg:top-20 lg:self-start">
-          <h3 className="section-label">Squad · gameweek {gameweekNumber}</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="section-label">Squad · gameweek {gameweekNumber}</h3>
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value as SortKey)}
+              className="select select-sm"
+              aria-label="Sort squad"
+              suppressHydrationWarning
+            >
+              {SORTS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <ul className="list mt-2 lg:max-h-[34rem] lg:overflow-y-auto">
-            {players.map((player) => {
+            {ordered.map((player) => {
               const starting = selected.has(player.id);
 
               return (
@@ -548,12 +683,19 @@ export default function PitchLineup({
                         </span>
                       ) : null}
                     </span>
-                    <span className="block truncate text-xs dim">
+                    {/* Season total shown alongside the rest: sorting by a
+                        number the list doesn't display just looks like the
+                        order went wrong.
+
+                        Wraps rather than truncates. Width alone can't win — a
+                        double gameweek fixture is long on its own — and the
+                        numbers are the whole reason for sorting, so they're the
+                        last thing that should fall off the end. */}
+                    <span className="block text-xs leading-snug dim">
                       {player.club} · {player.fixture}
                       {player.projected !== null ? ` · proj ${player.projected}` : ""}
-                      {player.lastPoints !== null
-                        ? ` · last ${player.lastPoints}`
-                        : ""}
+                      {player.lastPoints !== null ? ` · last ${player.lastPoints}` : ""}
+                      {player.seasonPoints !== null ? ` · season ${player.seasonPoints}` : ""}
                     </span>
                   </span>
                   <span className="text-[10px] uppercase tracking-wide dim">
