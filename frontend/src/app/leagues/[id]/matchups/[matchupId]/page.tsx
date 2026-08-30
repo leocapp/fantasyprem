@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import type { CSSProperties } from "react";
 
 import BackLink from "@/components/BackLink";
 import ManagerAvatar from "@/components/ManagerAvatar";
@@ -51,6 +52,44 @@ type MatchFixture = {
  * and saying "playing" would be a lie the page tells indefinitely.
  */
 const MATCH_WINDOW_MS = (2 * 60 + 45) * 60 * 1000;
+
+/**
+ * How a player's return reads at a glance: poor, ordinary, good — and the one
+ * who carried the side.
+ *
+ * The MVP can't be told apart by colour: --warning is #fbbf24, which is already
+ * gold, so a gold number beside a yellow number is just two yellow numbers. It
+ * gets a filled pill and bold weight instead, so it reads as a badge rather
+ * than a slightly different shade.
+ */
+function pointsStyle(value: number | null, mvp: boolean): CSSProperties | undefined {
+  if (value === null) return undefined;
+
+  if (mvp) {
+    return {
+      color: "#fde68a",
+      background: "rgb(251 191 36 / 0.18)",
+      borderRadius: "0.375rem",
+      padding: "0.05rem 0.4rem",
+      fontWeight: 700,
+    };
+  }
+
+  if (value < 3) return { color: "var(--danger)" };
+  if (value <= 8.5) return { color: "var(--warning)" };
+  return { color: "var(--accent-hover)" };
+}
+
+/**
+ * The MVP's row. A tint rather than a fill, and a bar down the left edge —
+ * eleven names is a dense list, and a solid gold band would win the page away
+ * from the scores themselves.
+ */
+const MVP_ROW: CSSProperties = {
+  background: "rgb(251 191 36 / 0.09)",
+  boxShadow: "inset 2px 0 0 #fbbf24",
+  borderRadius: "0.375rem",
+};
 
 type LineupRow = {
   id: string;
@@ -349,6 +388,23 @@ export default async function MatchupPage({
     const captainPlayed = (statsBy.get(captainId ?? "")?.minutes ?? 0) > 0;
     const doubledId = captainPlayed ? captainId : viceId;
 
+    /** What a player's cell shows, captain doubled — or null if not yet scored. */
+    const scoreOf = (playerId: string) =>
+      pointsBy.has(playerId)
+        ? (pointsBy.get(playerId) ?? 0) * (playerId === doubledId ? 2 : 1)
+        : null;
+
+    // The best return on this side. Per side rather than across the matchup, so
+    // each column has its own — the interesting comparison is your best against
+    // theirs. Ties all get it: picking one arbitrarily would be a lie about the
+    // other. Nobody is an MVP in a week where the best return was nothing.
+    const returns = allStarters
+      .map((row) => scoreOf(row.player_id))
+      .filter((value): value is number => value !== null);
+
+    const best = returns.length ? Math.max(...returns) : null;
+    const mvpScore = best !== null && best > 0 ? best : null;
+
     const starters = allStarters
       .sort(
         (a, b) =>
@@ -398,8 +454,17 @@ export default async function MatchupPage({
         </div>
 
         <ul className="list mt-3">
-          {starters.map((row) => (
-            <li key={row.player_id} className="row gap-2">
+          {starters.map((row) => {
+            const value = scoreOf(row.player_id);
+            const mvp = value !== null && mvpScore !== null && value === mvpScore;
+
+            return (
+            <li
+              key={row.player_id}
+              className="row gap-2"
+              style={mvp ? MVP_ROW : undefined}
+              title={mvp ? "Best return in this XI" : undefined}
+            >
               <PlayerAvatar
                 src={row.players?.photo_url ?? null}
                 name={row.players?.display_name ?? "?"}
@@ -449,13 +514,12 @@ export default async function MatchupPage({
                   actually been computed for him — which covers not kicked off,
                   still playing, finished but not yet ingested, and a blank
                   gameweek, all of which were previously reported as zero. */}
-              <span className="numeric text-sm">
-                {pointsBy.has(row.player_id)
-                  ? (pointsBy.get(row.player_id) ?? 0) * (row.player_id === doubledId ? 2 : 1)
-                  : "–"}
+              <span className="numeric text-sm" style={pointsStyle(value, mvp)}>
+                {value === null ? "–" : value}
               </span>
             </li>
-          ))}
+            );
+          })}
           {starters.length === 0 ? (
             <li className="row justify-center py-4 text-xs dim">
               No lineup was set for this gameweek.
@@ -526,6 +590,15 @@ export default async function MatchupPage({
       <p className="text-xs dim">
         The ×2 player is the captain — or the vice-captain, if the captain didn&apos;t play. Their
         score is shown already doubled, so each column adds up to the team total.
+      </p>
+
+      {/* A colour system nobody can read is decoration. */}
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs dim">
+        <span>Returns:</span>
+        <span style={{ color: "var(--danger)" }}>under 3</span>
+        <span style={{ color: "var(--warning)" }}>3 to 8.5</span>
+        <span style={{ color: "var(--accent-hover)" }}>above 8.5</span>
+        <span style={pointsStyle(10, true)}>best in the XI</span>
       </p>
     </main>
   );
