@@ -4,9 +4,12 @@ import { notFound, redirect } from "next/navigation";
 import AvailabilityFlag from "@/components/AvailabilityFlag";
 import AvailabilityKey from "@/components/AvailabilityKey";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import { relativeTime } from "@/lib/datetime";
 import { fetchAll } from "@/lib/fetchAll";
 import { createClient } from "@/lib/supabase/server";
 
+import RealTransfers, { type Transfer } from "./RealTransfers";
+import RecentMoves, { type Move } from "./RecentMoves";
 import { swapPlayer } from "./actions";
 
 type LeagueRow = { id: string; name: string; status: string };
@@ -105,6 +108,98 @@ export default async function FreeAgentsPage({
     .eq("league_id", id)
     .is("dropped_at", null)
     .returns<{ player_id: string }[]>();
+
+  // Recent moves, league-wide. In a seven-person league the interesting part is
+  // who else grabbed whom, not a record of your own decisions.
+  //
+  // Draft picks excluded: 119 of them landed in one evening and would bury
+  // every real transfer since.
+  const { data: moves } = await supabase
+    .from("transactions")
+    .select(
+      "id, type, created_at, fantasy_team_id, player_in_id, player_out_id, counterparty_team_id",
+    )
+    .eq("league_id", id)
+    .neq("type", "draft")
+    .order("created_at", { ascending: false })
+    .limit(10)
+    .returns<Move[]>();
+
+  const movePlayerIds = [
+    ...new Set(
+      (moves ?? [])
+        .flatMap((move) => [move.player_in_id, move.player_out_id])
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+
+  // Fetched separately rather than embedded: transactions has two foreign keys
+  // to players, so PostgREST needs the constraint named to disambiguate, and a
+  // hint that brittle is not worth saving one round trip.
+  const [{ data: movePlayers }, { data: leagueTeams }] = await Promise.all([
+    movePlayerIds.length
+      ? supabase
+          .from("players")
+          .select("id, display_name")
+          .in("id", movePlayerIds)
+          .returns<{ id: string; display_name: string }[]>()
+      : Promise.resolve({ data: [] as { id: string; display_name: string }[] }),
+
+    supabase
+      .from("fantasy_teams")
+      .select("id, name")
+      .eq("league_id", id)
+      .returns<{ id: string; name: string }[]>(),
+  ]);
+
+  // Real-world club changes, spotted by the squad refresh. Separate from the
+  // league's own moves above: one is what your friends did, the other is what
+  // happened in football.
+  const { data: transfers } = await supabase
+    .from("player_club_changes")
+    .select("id, kind, seen_at, player_id, from_club_id, to_club_id")
+    .order("seen_at", { ascending: false })
+    .limit(10)
+    .returns<Transfer[]>();
+
+  const transferPlayerIds = [...new Set((transfers ?? []).map((row) => row.player_id))];
+
+  // Clubs fetched whole rather than embedded twice: player_club_changes has two
+  // foreign keys to clubs, so PostgREST would need both constraints named, and
+  // there are only twenty rows.
+  const [{ data: transferPlayers }, { data: transferClubs }] = await Promise.all([
+    transferPlayerIds.length
+      ? supabase
+          .from("players")
+          .select("id, display_name")
+          .in("id", transferPlayerIds)
+          .returns<{ id: string; display_name: string }[]>()
+      : Promise.resolve({ data: [] as { id: string; display_name: string }[] }),
+
+    // Not current_clubs, which is what the filter dropdown below uses: a
+    // departure points at the club someone left, and that club may since have
+    // been relegated out of the current set.
+    supabase
+      .from("clubs")
+      .select("id, short_name")
+      .returns<{ id: string; short_name: string }[]>(),
+  ]);
+
+  const clubNames = new Map((transferClubs ?? []).map((row) => [row.id, row.short_name]));
+  const transferNames = new Map(
+    (transferPlayers ?? []).map((row) => [row.id, row.display_name]),
+  );
+  const transferTimes = new Map(
+    (transfers ?? []).map((row) => [row.id, relativeTime(row.seen_at) ?? ""]),
+  );
+
+  const playerNames = new Map((movePlayers ?? []).map((row) => [row.id, row.display_name]));
+  const teamNames = new Map((leagueTeams ?? []).map((row) => [row.id, row.name]));
+
+  // Formatted here on the server, so no Date.now() ends up in a render path.
+  const moveTimes = new Map(
+    (moves ?? []).map((move) => [move.id, relativeTime(move.created_at) ?? ""]),
+  );
 
   const ownedIds = (owned ?? []).map((row) => row.player_id);
 
@@ -257,6 +352,22 @@ export default async function FreeAgentsPage({
           Drop anyone for anyone, as long as your squad still meets its position minimums.
         </p>
       </div>
+
+      <RecentMoves
+        moves={moves ?? []}
+        teamNames={teamNames}
+        playerNames={playerNames}
+        times={moveTimes}
+        myTeamId={team.id}
+      />
+
+      <RealTransfers
+        transfers={transfers ?? []}
+        playerNames={transferNames}
+        clubNames={clubNames}
+        times={transferTimes}
+        leagueId={league.id}
+      />
 
       {filters.error ? <p className="notice notice-error">{filters.error}</p> : null}
       {filters.message ? <p className="notice notice-success">{filters.message}</p> : null}

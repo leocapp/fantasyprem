@@ -659,6 +659,21 @@ def main(argv: list[str] | None = None) -> int:
             if moved:
                 print(f"  {moved} player(s) listed at two clubs — keeping the later listing")
 
+            # Read the clubs we are about to overwrite. This is the only moment
+            # a transfer is visible: the upsert below replaces club_id in place
+            # and the previous value is gone.
+            #
+            # Deliberately only on this path. missing_player_rows, which fills in
+            # players discovered from match lineups, also writes club_id — and
+            # sets it to whoever they turned out for in that match, which for a
+            # backfilled past season is a club they left years ago. Comparing
+            # there would invent a transfer for every historic appearance.
+            before = {
+                row["sportmonks_id"]: row
+                for row in db.select("players", select="id,sportmonks_id,club_id,is_active")
+                if row["sportmonks_id"]
+            }
+
             db.update("players", {"is_active": False}, is_active="is.true")
             db.upsert("players", unique_players, on_conflict="sportmonks_id")
             phase.mark("players", f"{len(unique_players)} active, everyone else deactivated")
@@ -669,6 +684,69 @@ def main(argv: list[str] | None = None) -> int:
                 for row in db.select("players", select="id,sportmonks_id")
                 if row["sportmonks_id"]
             }
+
+            # --- transfers ---------------------------------------------------
+            # Recorded after the upsert, so a player arriving from another league
+            # already has a row to point at.
+            changes: list[dict[str, Any]] = []
+            seen: set[str] = set()
+
+            for row in unique_players:
+                sportmonks_id = row["sportmonks_id"]
+                seen.add(sportmonks_id)
+
+                player_id = player_ids.get(sportmonks_id)
+                if not player_id:
+                    continue
+
+                prior = before.get(sportmonks_id)
+
+                if prior is None:
+                    changes.append(
+                        {
+                            "player_id": player_id,
+                            "from_club_id": None,
+                            "to_club_id": row.get("club_id"),
+                            "kind": "arrived",
+                        }
+                    )
+                elif prior.get("club_id") and prior["club_id"] != row.get("club_id"):
+                    changes.append(
+                        {
+                            "player_id": player_id,
+                            "from_club_id": prior["club_id"],
+                            "to_club_id": row.get("club_id"),
+                            "kind": "moved",
+                        }
+                    )
+
+            # Departures are an absence, not an event: nothing announces them,
+            # the player simply stops appearing in any squad. `before` was read
+            # ahead of the reset, so is_active there is the previous run's
+            # verdict and someone already deactivated won't fire again.
+            for sportmonks_id, prior in before.items():
+                if prior.get("is_active") and sportmonks_id not in seen:
+                    changes.append(
+                        {
+                            "player_id": prior["id"],
+                            "from_club_id": prior.get("club_id"),
+                            "to_club_id": None,
+                            "kind": "left",
+                        }
+                    )
+
+            # Not deduped: the three branches above are mutually exclusive, so a
+            # player yields at most one row per run and nothing can collide
+            # within the batch. If that ever stops being true, ON CONFLICT will
+            # say so loudly rather than a dedupe quietly dropping a real move.
+            if changes:
+                db.upsert(
+                    "player_club_changes",
+                    changes,
+                    on_conflict="player_id,from_club_id,to_club_id,kind",
+                )
+
+            phase.mark("transfers", f"{len(changes)} club change(s)")
 
 
             # --- injuries and suspensions ------------------------------------

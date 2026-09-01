@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import ManagerAvatar from "@/components/ManagerAvatar";
+import PlayerAvatar from "@/components/PlayerAvatar";
 import TeamLabel from "@/components/TeamLabel";
 import { createClient } from "@/lib/supabase/server";
 
@@ -41,6 +43,7 @@ type StandingRow = {
 
 type MatchupRow = {
   id: string;
+  gameweek_id: string;
   home_team_id: string;
   away_team_id: string | null;
   home_points: number;
@@ -49,6 +52,72 @@ type MatchupRow = {
   gameweeks: { number: number } | null;
 };
 
+type RecapLineup = {
+  fantasy_team_id: string;
+  lineup_players: { player_id: string; role: string }[];
+};
+
+type RecapScore = {
+  player_id: string;
+  points: number;
+  players: {
+    display_name: string;
+    position: string;
+    photo_url: string | null;
+    clubs: { short_name: string } | null;
+  } | null;
+};
+
+type RecapStat = {
+  minutes: number;
+  goals: number;
+  assists: number;
+  clean_sheet: boolean;
+  goals_conceded: number;
+  saves: number;
+  yellow_cards: number;
+  red_cards: number;
+};
+
+/** "90' · 2G · 1A · CS" — what he actually did, not what it was worth. */
+function statLine(stats: RecapStat[] | null | undefined): string {
+  if (!stats || stats.length === 0) return "";
+
+  const total = stats.reduce(
+    (sum, row) => ({
+      minutes: sum.minutes + row.minutes,
+      goals: sum.goals + row.goals,
+      assists: sum.assists + row.assists,
+      clean_sheet: sum.clean_sheet || row.clean_sheet,
+      goals_conceded: sum.goals_conceded + row.goals_conceded,
+      saves: sum.saves + row.saves,
+      yellow_cards: sum.yellow_cards + row.yellow_cards,
+      red_cards: sum.red_cards + row.red_cards,
+    }),
+    {
+      minutes: 0,
+      goals: 0,
+      assists: 0,
+      clean_sheet: false,
+      goals_conceded: 0,
+      saves: 0,
+      yellow_cards: 0,
+      red_cards: 0,
+    },
+  );
+
+  const parts = [`${total.minutes}'`];
+  if (total.goals) parts.push(`${total.goals}G`);
+  if (total.assists) parts.push(`${total.assists}A`);
+  if (total.clean_sheet) parts.push("clean sheet");
+  if (total.saves) parts.push(`${total.saves} saves`);
+  if (total.goals_conceded) parts.push(`${total.goals_conceded} conceded`);
+  if (total.yellow_cards) parts.push("yellow");
+  if (total.red_cards) parts.push("red");
+
+  return parts.join(" · ");
+}
+
 export const dynamic = "force-dynamic";
 
 export default async function LeaguePage({
@@ -56,10 +125,10 @@ export default async function LeaguePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; message?: string }>;
+  searchParams: Promise<{ error?: string; message?: string; gw?: string }>;
 }) {
   const { id } = await params;
-  const { error, message } = await searchParams;
+  const { error, message, gw } = await searchParams;
   const supabase = await createClient();
 
   const {
@@ -104,7 +173,7 @@ export default async function LeaguePage({
         : supabase
             .from("matchups")
             .select(
-              "id, home_team_id, away_team_id, home_points, away_points, status, gameweeks (number)",
+              "id, gameweek_id, home_team_id, away_team_id, home_points, away_points, status, gameweeks (number)",
             )
             .eq("league_id", id)
             .returns<MatchupRow[]>(),
@@ -141,9 +210,106 @@ export default async function LeaguePage({
     ordered.find((matchup) => matchup.status === "scheduled")?.gameweeks?.number ??
     ordered.at(-1)?.gameweeks?.number;
 
-  const fixtures = ordered.filter(
-    (matchup) => matchup.gameweeks?.number === currentGameweek,
-  );
+  // Every gameweek that actually has matchups, in order. Derived from the
+  // schedule rather than from the gameweeks table so the arrows can never walk
+  // into a week this league doesn't play.
+  const weeks = [
+    ...new Set(
+      ordered
+        .map((matchup) => matchup.gameweeks?.number)
+        .filter((number): number is number => typeof number === "number"),
+    ),
+  ].sort((a, b) => a - b);
+
+  const asked = Number(gw);
+  const viewing = weeks.includes(asked) ? asked : currentGameweek;
+
+  const at = viewing !== undefined ? weeks.indexOf(viewing) : -1;
+  const previousWeek = at > 0 ? weeks[at - 1] : null;
+  const nextWeek = at >= 0 && at < weeks.length - 1 ? weeks[at + 1] : null;
+
+  const fixtures = ordered.filter((matchup) => matchup.gameweeks?.number === viewing);
+
+  // ------------------------------------------------------------- recap ----
+  // The most recent gameweek where *every* matchup is final. A deferred fixture
+  // leaves a week provisional for days, and recapping a result that later
+  // changes would be worse than saying nothing.
+  const settledWeeks = weeks.filter((week) => {
+    const inWeek = ordered.filter((matchup) => matchup.gameweeks?.number === week);
+    return inWeek.length > 0 && inWeek.every((matchup) => matchup.status === "final");
+  });
+
+  const recapWeek = settledWeeks.at(-1) ?? null;
+  const recapId =
+    recapWeek === null
+      ? null
+      : (ordered.find((matchup) => matchup.gameweeks?.number === recapWeek)?.gameweek_id ?? null);
+
+  // Team of the week, straight out of the matchups already in hand. Only real
+  // sides count — a bye's away_points is the league average, not a team.
+  let bestTeam: { teamId: string; points: number } | null = null;
+
+  if (recapWeek !== null) {
+    for (const matchup of ordered) {
+      if (matchup.gameweeks?.number !== recapWeek) continue;
+
+      const sides: { teamId: string; points: number }[] = [
+        { teamId: matchup.home_team_id, points: Number(matchup.home_points) },
+      ];
+      if (matchup.away_team_id) {
+        sides.push({ teamId: matchup.away_team_id, points: Number(matchup.away_points) });
+      }
+
+      for (const side of sides) {
+        if (!bestTeam || side.points > bestTeam.points) bestTeam = side;
+      }
+    }
+  }
+
+  // Player of the week, among those actually started. A free agent who scored
+  // twenty is a different story and not this one — this is about the league.
+  const { data: recapLineups } = recapId
+    ? await supabase
+        .from("lineups")
+        .select("fantasy_team_id, lineup_players (player_id, role)")
+        .eq("gameweek_id", recapId)
+        .in("fantasy_team_id", (teams ?? []).map((team) => team.id))
+        .returns<RecapLineup[]>()
+    : { data: null };
+
+  const startedBy = new Map<string, string>();
+  for (const lineup of recapLineups ?? []) {
+    for (const row of lineup.lineup_players) {
+      if (row.role === "starter") startedBy.set(row.player_id, lineup.fantasy_team_id);
+    }
+  }
+
+  const { data: topScores } = startedBy.size
+    ? await supabase
+        .from("player_gameweek_scores")
+        .select(
+          "player_id, points, players (display_name, position, photo_url, clubs (short_name))",
+        )
+        .eq("league_id", id)
+        .eq("gameweek_id", recapId!)
+        .in("player_id", [...startedBy.keys()])
+        .order("points", { ascending: false })
+        .limit(1)
+        .returns<RecapScore[]>()
+    : { data: null };
+
+  const bestPlayer = topScores?.[0] ?? null;
+
+  const { data: bestPlayerStats } = bestPlayer
+    ? await supabase
+        .from("player_match_stats")
+        .select(
+          "minutes, goals, assists, clean_sheet, goals_conceded, saves, yellow_cards, red_cards, fixtures!inner(gameweek_id)",
+        )
+        .eq("player_id", bestPlayer.player_id)
+        .eq("fixtures.gameweek_id", recapId!)
+        .returns<RecapStat[]>()
+    : { data: null };
 
   // Co-commissioners have every commissioner power here, so the check can't
   // just compare against the league's owner.
@@ -184,7 +350,60 @@ export default async function LeaguePage({
 
       {fixtures.length > 0 ? (
         <section>
-          <h2 className="section-label">Gameweek {currentGameweek}</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="section-label">Gameweek {viewing}</h2>
+
+            {/* replace and scroll={false}, for the reason the team page tabs
+                learned the hard way: stepping through weeks is browsing, not
+                travelling, and the back button should return you to wherever
+                you came from rather than replaying every week you looked at. */}
+            <span className="flex items-center gap-1">
+              {previousWeek !== null ? (
+                <Link
+                  href={`/leagues/${league.id}?gw=${previousWeek}`}
+                  replace
+                  scroll={false}
+                  className="btn btn-ghost btn-sm"
+                  aria-label={`Gameweek ${previousWeek}`}
+                >
+                  ‹
+                </Link>
+              ) : (
+                <span className="btn btn-ghost btn-sm opacity-30" aria-hidden>
+                  ‹
+                </span>
+              )}
+
+              {nextWeek !== null ? (
+                <Link
+                  href={`/leagues/${league.id}?gw=${nextWeek}`}
+                  replace
+                  scroll={false}
+                  className="btn btn-ghost btn-sm"
+                  aria-label={`Gameweek ${nextWeek}`}
+                >
+                  ›
+                </Link>
+              ) : (
+                <span className="btn btn-ghost btn-sm opacity-30" aria-hidden>
+                  ›
+                </span>
+              )}
+
+              {/* Only when you've wandered off. Thirty-eight weeks is a long way
+                  back by April. */}
+              {viewing !== currentGameweek ? (
+                <Link
+                  href={`/leagues/${league.id}`}
+                  replace
+                  scroll={false}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Now
+                </Link>
+              ) : null}
+            </span>
+          </div>
           <ul className="mt-3 flex flex-col gap-1.5">
             {fixtures.map((matchup) => {
               const mine = matchup.home_team_id === myTeamId || matchup.away_team_id === myTeamId;
@@ -279,6 +498,80 @@ export default async function LeaguePage({
               ))}
             </tbody>
           </table>
+        </section>
+      ) : null}
+
+      {/* Only for a week where every fixture is final. A deferred match leaves a
+          gameweek provisional for days, and crowning a team of the week whose
+          score later changes is worse than saying nothing. */}
+      {recapWeek !== null && (bestTeam || bestPlayer) ? (
+        <section className="card">
+          <h2 className="section-label">Gameweek {recapWeek} recap</h2>
+
+          <div className="mt-3 flex flex-col gap-4 sm:flex-row">
+            {bestTeam ? (
+              <div className="flex flex-1 items-start gap-3">
+                <ManagerAvatar
+                  src={avatarOf.get(bestTeam.teamId)}
+                  username={managerOf.get(bestTeam.teamId)}
+                  size="lg"
+                />
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wide dim">Team of the week</p>
+                  <p className="mt-1">
+                    <Link
+                      href={`/leagues/${league.id}/teams/${bestTeam.teamId}`}
+                      className="font-semibold hover:underline"
+                    >
+                      {teamName.get(bestTeam.teamId) ?? "—"}
+                    </Link>
+                  </p>
+                  <p className="numeric text-2xl" style={{ color: "var(--accent-hover)" }}>
+                    {bestTeam.points}
+                  </p>
+                  {managerOf.get(bestTeam.teamId) ? (
+                    <p className="text-xs dim">@{managerOf.get(bestTeam.teamId)}</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {bestPlayer ? (
+              <div className="flex flex-1 items-start gap-3">
+                <PlayerAvatar
+                  src={bestPlayer.players?.photo_url ?? null}
+                  name={bestPlayer.players?.display_name ?? "?"}
+                  size="lg"
+                />
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wide dim">Player of the week</p>
+                  <p className="mt-1">
+                    <Link
+                      href={`/leagues/${league.id}/players/${bestPlayer.player_id}?gw=${recapWeek}`}
+                      className="font-semibold hover:underline"
+                    >
+                      {bestPlayer.players?.display_name ?? "—"}
+                    </Link>
+                    <span className="text-xs dim">
+                      {" "}
+                      {bestPlayer.players?.position} ·{" "}
+                      {bestPlayer.players?.clubs?.short_name ?? "—"}
+                    </span>
+                  </p>
+                  <p className="numeric text-2xl" style={{ color: "var(--accent-hover)" }}>
+                    {bestPlayer.points}
+                  </p>
+                  <p className="text-xs dim">{statLine(bestPlayerStats)}</p>
+                  {startedBy.get(bestPlayer.player_id) ? (
+                    <p className="mt-1 text-xs dim">
+                      started by{" "}
+                      {teamName.get(startedBy.get(bestPlayer.player_id)!) ?? "someone"}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </section>
       ) : null}
 

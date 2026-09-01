@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import AvailabilityKey from "@/components/AvailabilityKey";
-import { formatDeadline } from "@/lib/datetime";
+import { formatDeadline, relativeTime } from "@/lib/datetime";
 import { fetchAll } from "@/lib/fetchAll";
 import { createClient } from "@/lib/supabase/server";
 
@@ -51,28 +51,6 @@ type RosterRow = {
 
 type PreviousLineupRow = LineupRow & { gameweeks: { number: number } | null };
 
-/**
- * "3 minutes ago", "yesterday". Computed here on the server and handed down as
- * a finished string, because doing it inside the client component would put
- * Date.now() in a render path — the exact hydration mismatch React warns about,
- * and one this codebase has already been bitten by twice.
- */
-function savedAgo(value: string | null | undefined): string | null {
-  if (!value) return null;
-
-  const then = new Date(String(value).replace(" ", "T")).getTime();
-  if (Number.isNaN(then)) return null;
-
-  const minutes = Math.round((Date.now() - then) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
-
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-
-  const days = Math.round(hours / 24);
-  return days === 1 ? "yesterday" : `${days} days ago`;
-}
 
 type LineupRow = {
   id: string;
@@ -583,7 +561,7 @@ export default async function TeamPage({
             teamName={team.name}
             leagueId={league.id}
             deadlineLabel={formatDeadline(gameweek.deadline_at)}
-            savedLabel={savedAgo(lineup?.updated_at)}
+            savedLabel={relativeTime(lineup?.updated_at)}
             prefilled={prefilled}
           />
         </form>
