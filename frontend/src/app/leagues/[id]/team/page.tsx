@@ -472,6 +472,26 @@ export default async function TeamPage({
       {error ? <p className="notice notice-error">{error}</p> : null}
       {message ? <p className="notice notice-success">{message}</p> : null}
 
+      {/* First thing on the page, because it blocks saving a lineup. The drop
+          buttons live in the injury reserve section rather than being repeated
+          here — two copies of a destructive control is how someone releases a
+          player twice. */}
+      {returnedPlayer && overBy > 0 ? (
+        <div className="notice notice-error">
+          <p className="text-sm">
+            <strong>{returnedPlayer.display_name}</strong> is fit again and has taken his
+            roster place back, so you&apos;re{" "}
+            {overBy === 1 ? "one player" : `${overBy} players`} over the limit.{" "}
+            <strong>You can&apos;t save a lineup until you drop someone.</strong>
+          </p>
+          <p className="mt-2">
+            <a href="#injury-reserve" className="btn btn-ghost btn-sm">
+              Choose who to drop
+            </a>
+          </p>
+        </div>
+      ) : null}
+
       {/* Only shown when there is genuinely something to do: a gameweek that has
           started but still holds one of your players whose match hasn't. In an
           ordinary week this is absent entirely. */}

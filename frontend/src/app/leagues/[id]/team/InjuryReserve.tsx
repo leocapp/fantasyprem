@@ -35,7 +35,7 @@ export default function InjuryReserve({
   droppable: ReserveEntry[];
 }) {
   return (
-    <section>
+    <section id="injury-reserve" className="scroll-mt-20">
       <h2 className="section-label">Injury reserve</h2>
 
       {/* The provider cleared him and he took his roster spot back on his own.
