@@ -203,6 +203,40 @@ export default async function LeaguePage({
     .slice()
     .sort((a, b) => b.wins - a.wins || b.points_for - a.points_for || a.losses - b.losses);
 
+  // The field's own record, from the other side of every bye.
+  //
+  // Deliberately computed here rather than added to league_standings. That view
+  // is seeded into the playoff bracket and mailed out in the weekly recap, and a
+  // synthetic row with no team behind it would end up holding a seed and
+  // receiving an email. It belongs on the page, not in the data model.
+  //
+  // With an odd league there is exactly one bye a week, so the field plays as
+  // many games as everyone else and the numbers line up column for column.
+  const field = (allMatchups ?? []).reduce(
+    (running, matchup) => {
+      if (
+        matchup.away_team_id !== null ||
+        matchup.stage !== "regular" ||
+        matchup.status !== "final"
+      ) {
+        return running;
+      }
+
+      const scored = Number(matchup.away_points);
+      const conceded = Number(matchup.home_points);
+
+      return {
+        games: running.games + 1,
+        wins: running.wins + (scored > conceded ? 1 : 0),
+        losses: running.losses + (scored < conceded ? 1 : 0),
+        draws: running.draws + (scored === conceded ? 1 : 0),
+        points_for: running.points_for + scored,
+        points_against: running.points_against + conceded,
+      };
+    },
+    { games: 0, wins: 0, losses: 0, draws: 0, points_for: 0, points_against: 0 },
+  );
+
   const ordered = (allMatchups ?? [])
     .slice()
     .sort((a, b) => (a.gameweeks?.number ?? 0) - (b.gameweeks?.number ?? 0));
@@ -516,8 +550,35 @@ export default async function LeaguePage({
                   </td>
                 </tr>
               ))}
+
+              {/* Below a heavy rule, permanently last: the field isn't in the
+                  running for anything, it's the yardstick. Beating it is the
+                  same as being above average that week. */}
+              {field.games > 0 ? (
+                <tr className="border-t-2 border-[var(--border-strong)]">
+                  <td className="py-2">
+                    <span className="text-sm dim">The field</span>
+                    <span className="block text-[10px] dim">every bye week</span>
+                  </td>
+                  <td className="numeric px-2 py-2 text-right muted">{field.games}</td>
+                  <td className="numeric px-2 py-2 text-right dim">{field.wins}</td>
+                  <td className="numeric px-2 py-2 text-right muted">{field.draws}</td>
+                  <td className="numeric px-2 py-2 text-right muted">{field.losses}</td>
+                  <td className="numeric px-2 py-2 text-right text-xs dim">
+                    {field.points_for.toFixed(1)}
+                  </td>
+                  <td className="numeric px-2 py-2 text-right text-xs dim">
+                    {field.points_against.toFixed(1)}
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
+
+          {field.games > 0 ? (
+            <p className="mt-2 text-xs dim">
+            </p>
+          ) : null}
         </section>
       ) : null}
 
