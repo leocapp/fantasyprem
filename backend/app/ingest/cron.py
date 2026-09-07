@@ -100,6 +100,19 @@ def main() -> int:
             if leagues:
                 print(f"  gameweek {gameweek['number']}: {leagues} league(s)")
 
+        # After scoring, never before: a round can only open once the previous
+        # one is final, and "final" is something score_all has just decided.
+        # advance_playoffs is idempotent and returns null when there is nothing
+        # to do, so this is a no-op for most of the season and for any league
+        # with playoffs switched off.
+        try:
+            moved = db.rpc("advance_playoffs_all", {})
+            if moved:
+                print(f"  playoffs advanced in {moved} league(s)")
+        except RuntimeError as error:
+            # A bracket that can't advance shouldn't stop projections or emails.
+            print(f"  playoffs could not advance: {error}", file=sys.stderr)
+
         elapsed("through step 2")
 
         print("[3/5] Projecting the next gameweeks")
