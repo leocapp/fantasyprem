@@ -36,7 +36,28 @@ export default function InjuryReserve({
 }) {
   return (
     <section id="injury-reserve" className="scroll-mt-20">
-      <h2 className="section-label">Injury reserve</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="section-label">Injury reserve</h2>
+
+        {/* The explanation used to sit under the list as a paragraph nobody
+            needed twice. A details element keeps it one tap away without any
+            client JavaScript, and works on a phone where a title tooltip
+            wouldn't. */}
+        <details className="group relative">
+          <summary
+            className="cursor-pointer list-none rounded-full border border-[var(--border)] px-1.5 text-[10px] leading-4 dim"
+            aria-label="How injury reserve works"
+          >
+            i
+          </summary>
+          <p className="absolute left-0 top-6 z-10 w-64 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-2.5 text-xs dim shadow-lg">
+            One spot, for a player who has been ruled out — injured or suspended, not
+            doubtful. He doesn&apos;t count against your roster, so you can sign a
+            replacement. When he&apos;s fit he takes his spot back automatically and
+            somebody has to go.
+          </p>
+        </details>
+      </div>
 
       {/* The provider cleared him and he took his roster spot back on his own.
           Nothing here is the manager's fault, so the message says what happened
@@ -133,13 +154,6 @@ export default function InjuryReserve({
           Nobody on your roster is injured or suspended, so there&apos;s nobody to reserve.
         </p>
       ) : null}
-
-      <p className="mt-2 text-xs dim">
-        One spot, for a player that has been ruled out — injured or suspended, not
-        doubtful. He doesn&apos;t count against your roster, so you can sign a replacement
-        in the same position. When he&apos;s fit he takes his spot back automatically and
-        somebody has to go.
-      </p>
     </section>
   );
 }

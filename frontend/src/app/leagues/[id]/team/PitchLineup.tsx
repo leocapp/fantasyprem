@@ -25,6 +25,8 @@ export type SquadPlayer = {
   lastMinutes: number | null;
   /** Everything they've scored this season under this league's rules. */
   seasonPoints: number | null;
+  /** On the injury reserve: shown with the squad, but cannot be picked. */
+  reserved: boolean;
 };
 
 const SORTS = [
@@ -176,7 +178,9 @@ export default function PitchLineup({
     [assignments],
   );
 
-  const bench = players.filter((player) => !selected.has(player.id));
+  // Reserved players are in the list but not on the bench: they can't be
+  // brought on, which is the whole point of the spot.
+  const bench = players.filter((player) => !selected.has(player.id) && !player.reserved);
   const starterCount = selected.size;
   const departedStarters = players.filter(
     (player) => player.departed && selected.has(player.id),
@@ -232,7 +236,8 @@ export default function PitchLineup({
         (player) =>
           player.position === picking.position &&
           !selected.has(player.id) &&
-          !player.locked,
+          !player.locked &&
+          !player.reserved,
       )
     : [];
 
@@ -646,7 +651,13 @@ export default function PitchLineup({
                 <li
                   key={player.id}
                   className="row gap-2"
-                  style={starting ? undefined : { opacity: 0.65 }}
+                  style={
+                    player.reserved
+                      ? { opacity: 0.5 }
+                      : starting
+                        ? undefined
+                        : { opacity: 0.65 }
+                  }
                 >
                   <span className={`badge badge-${player.position}`}>{player.position}</span>
                   <span className="min-w-0 flex-1">
@@ -698,8 +709,14 @@ export default function PitchLineup({
                       {player.seasonPoints !== null ? ` · season ${player.seasonPoints}` : ""}
                     </span>
                   </span>
-                  <span className="text-[10px] uppercase tracking-wide dim">
-                    {starting ? "XI" : "bench"}
+                  {/* Sits with the bench, reads as not-quite-bench. */}
+                  <span
+                    className="text-[10px] uppercase tracking-wide"
+                    style={player.reserved ? { color: "var(--warning)" } : undefined}
+                  >
+                    <span className={player.reserved ? undefined : "dim"}>
+                      {player.reserved ? "IR" : starting ? "XI" : "bench"}
+                    </span>
                   </span>
                 </li>
               );

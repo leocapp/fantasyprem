@@ -7,6 +7,7 @@ import { fetchAll } from "@/lib/fetchAll";
 import { createClient } from "@/lib/supabase/server";
 
 import InjuryReserve, { type ReserveEntry } from "./InjuryReserve";
+import ScoringBreakdown, { type Bucket } from "./ScoringBreakdown";
 import PitchLineup, { type Formation, type SquadPlayer } from "./PitchLineup";
 import { saveLineup } from "./actions";
 
@@ -321,6 +322,13 @@ export default async function TeamPage({
     seasonPoints.set(row.player_id, (seasonPoints.get(row.player_id) ?? 0) + Number(row.points));
   }
 
+  // Averages per line of the team. Computed in the database rather than here:
+  // it needs every completed gameweek's lineup, and pulling all of that back to
+  // count it would be most of a season of rows for four numbers.
+  const { data: breakdown } = await supabase.rpc("team_scoring_breakdown", {
+    p_team_id: team.id,
+  });
+
   const projections = gameweek
     ? await Promise.all(
         rosterIds.map(async (playerId) => {
@@ -372,7 +380,14 @@ export default async function TeamPage({
     .filter((player): player is PlayerRow => Boolean(player))
     .map(entryOf);
 
-  const players = activeRows
+  const reservedIds = new Set(
+    (roster ?? []).filter(isReserved).map((row) => row.player_id),
+  );
+
+  // The whole roster, reserved players included. They appear in the squad list
+  // alongside the bench — set aside rather than hidden, which is what a reserve
+  // spot actually is — and PitchLineup refuses to select them.
+  const players = (roster ?? [])
     .map((row) => row.players)
     .filter((player): player is PlayerRow => Boolean(player))
     .sort(
@@ -415,6 +430,7 @@ export default async function TeamPage({
       seasonPoints: seasonPoints.has(player.id)
         ? Math.round(seasonPoints.get(player.id)! * 10) / 10
         : null,
+      reserved: reservedIds.has(player.id),
     };
   });
 
@@ -423,7 +439,9 @@ export default async function TeamPage({
   // propose is dropped and the slot left open: players since transferred away,
   // players now on injury reserve, and — in a gameweek already underway —
   // anyone whose match has kicked off, since save_lineup would refuse them.
-  const selectable = new Set(squad.filter((player) => !player.locked).map((player) => player.id));
+  const selectable = new Set(
+    squad.filter((player) => !player.locked && !player.reserved).map((player) => player.id),
+  );
 
   const sourceStarters = (source?.lineup_players ?? [])
     .filter((row) => row.role === "starter")
@@ -567,18 +585,30 @@ export default async function TeamPage({
         </form>
       )}
 
-      {/* Below the pitch rather than on it. Reserving somebody is roster
-          management, not team selection — it happens once a month, and it
-          shouldn't compete for attention with the XI. */}
+      {/* Sits in the same right-hand column as the squad list, directly beneath
+          it, because that is where the reserved player already appears — tagged
+          IR beside the bench. It can't live inside PitchLineup: that renders
+          within the lineup form, and these are forms of their own.
+
+          The columns must match the grid in PitchLineup exactly, or the box
+          drifts out of line with the list it belongs to. */}
       {league.status === "active" ? (
-        <InjuryReserve
-          leagueId={league.id}
-          reserved={reservedPlayer ? entryOf(reservedPlayer) : null}
-          returned={returnedPlayer ? entryOf(returnedPlayer) : null}
-          eligible={eligibleToReserve}
-          overBy={overBy}
-          droppable={players.map(entryOf)}
-        />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+          <div className="hidden lg:block" aria-hidden />
+          <InjuryReserve
+            leagueId={league.id}
+            reserved={reservedPlayer ? entryOf(reservedPlayer) : null}
+            returned={returnedPlayer ? entryOf(returnedPlayer) : null}
+            eligible={eligibleToReserve}
+            overBy={overBy}
+            droppable={players.filter((player) => !reservedIds.has(player.id)).map(entryOf)}
+          />
+        </div>
+      ) : null}
+
+      {/* Last: this is about the season, not about this week's team sheet. */}
+      {league.status === "active" ? (
+        <ScoringBreakdown buckets={(breakdown ?? []) as Bucket[]} />
       ) : null}
     </main>
   );
