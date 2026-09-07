@@ -18,10 +18,13 @@ export default function NavBar({
   email,
   leagues,
   lastLeagueId,
+  failed = false,
 }: {
   email: string;
   leagues: League[];
   lastLeagueId?: string | null;
+  /** The league query errored. Not the same as belonging to none. */
+  failed?: boolean;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -76,6 +79,18 @@ export default function NavBar({
     <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg)]/95 backdrop-blur">
       {/* Wider than the page container: a commissioner sees eight links. */}
       <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3">
+        {/* An empty nav used to be indistinguishable from a broken query. It
+            says which now. */}
+        {failed ? (
+          <span
+            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold"
+            style={{ background: "rgb(248 113 113 / 0.2)", color: "var(--danger)" }}
+            title="Your leagues could not be loaded. This is a fault on our side, not an empty account."
+          >
+            leagues unavailable
+          </span>
+        ) : null}
+
         <Link href="/dashboard" className="font-bold tracking-tight">
           FantasyPrem
         </Link>

@@ -15,6 +15,7 @@ type LeagueDetail = {
   status: string;
   max_teams: number;
   roster_size: number;
+  playoff_teams: number;
   commissioner_id: string;
 };
 
@@ -140,7 +141,9 @@ export default async function LeaguePage({
   // Returns nothing if the user has no team here — RLS, not an app-level check.
   const { data: league } = await supabase
     .from("leagues")
-    .select("id, name, join_code, status, max_teams, roster_size, commissioner_id")
+    .select(
+      "id, name, join_code, status, max_teams, roster_size, playoff_teams, commissioner_id",
+    )
     .eq("id", id)
     .maybeSingle<LeagueDetail>();
 
@@ -453,7 +456,19 @@ export default async function LeaguePage({
 
       {table.length > 0 ? (
         <section>
-          <h2 className="section-label">Standings</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="section-label">Standings</h2>
+            {/* The table decides the league title on its own. The link is what
+                tells you it also decides who gets in. */}
+            {league.playoff_teams > 0 ? (
+              <Link
+                href={`/leagues/${league.id}/playoffs`}
+                className="btn btn-ghost btn-sm"
+              >
+                Playoff picture
+              </Link>
+            ) : null}
+          </div>
           <table className="mt-3 w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] text-xs uppercase tracking-wide dim">

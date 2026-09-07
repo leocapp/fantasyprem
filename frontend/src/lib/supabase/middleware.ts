@@ -8,13 +8,6 @@ import { getSupabaseEnv } from "./env";
 type CookiesToSet = { name: string; value: string; options?: CookieOptions }[];
 
 /**
- * How long to wait for Supabase Auth before giving up and letting the request
- * through unrefreshed. A token refresh that takes longer than this is a service
- * in trouble, not a slow network.
- */
-const AUTH_TIMEOUT_MS = 2000;
-
-/**
  * Refreshes the Supabase auth session and forwards updated cookies.
  * No-ops when Supabase env vars are not set, so the skeleton runs unconfigured.
  */
@@ -39,20 +32,20 @@ export async function updateSession(request: NextRequest) {
 
   // IMPORTANT: do not run logic between createServerClient and getUser().
   //
-  // Raced against a timer rather than plainly awaited. This call had nothing to
-  // stop it hanging, so when Supabase Auth went unhealthy the middleware ran
-  // until Vercel killed it and the whole site returned 504
-  // MIDDLEWARE_INVOCATION_TIMEOUT — every route, including the ones that never
-  // needed a session.
+  // Plainly awaited, and it must stay that way. This was briefly raced against a
+  // two-second timer to stop a Supabase Auth outage taking the whole site down
+  // with a 504. The reasoning was that failing open is safe because every page
+  // does its own getUser() and would redirect to /login — and that was wrong.
   //
-  // Failing open is safe: all this does is refresh the session, and every page
-  // performs its own getUser() and redirects to /login. The worst outcome of
-  // losing the race is somebody landing on the login screen, which beats the
-  // site being unreachable.
-  await Promise.race([
-    supabase.auth.getUser().catch(() => null),
-    new Promise((resolve) => setTimeout(resolve, AUTH_TIMEOUT_MS)),
-  ]);
+  // This call is not a check, it is the refresh. Skip it and the browser keeps
+  // an access token that quietly expires; the user still looks signed in, but
+  // every RLS-protected read returns an empty list instead of an error. The nav
+  // renders as though they belong to no leagues, their team vanishes, and
+  // nothing anywhere says why.
+  //
+  // A loud 504 during a rare platform incident is a better failure than a silent
+  // one that makes a working account look empty.
+  await supabase.auth.getUser();
 
   return response;
 }

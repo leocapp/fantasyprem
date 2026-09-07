@@ -25,19 +25,36 @@ export default async function AppNav() {
 
   if (!user) return null;
 
-  const { data: memberships } = await supabase
+  const { data: memberships, error: membershipError } = await supabase
     .from("fantasy_teams")
     .select("leagues (id, name, status, commissioner_id)")
     .eq("owner_id", user.id)
     .returns<MembershipRow[]>();
 
+  // A failed query and an empty result are the same shape here, and that cost
+  // real time: adding playoff_seeds accidentally gave leagues and fantasy_teams
+  // a second relationship, PostgREST refused the ambiguous embed, and this
+  // rendered as "you belong to no leagues" for every user in every league. No
+  // error page, nothing in the console, nothing to search for.
+  //
+  // So say so. The nav still renders — being unable to list leagues shouldn't
+  // take the whole site down — but it says it failed rather than implying an
+  // answer it doesn't have.
+  if (membershipError) {
+    console.error("AppNav: could not load leagues —", membershipError.message);
+  }
+
   // Co-commissioners live in their own table, so owning the league is only one
   // of the two ways to be a commissioner.
-  const { data: grants } = await supabase
+  const { data: grants, error: grantError } = await supabase
     .from("league_commissioners")
     .select("league_id")
     .eq("profile_id", user.id)
     .returns<{ league_id: string }[]>();
+
+  if (grantError) {
+    console.error("AppNav: could not load commissioner grants —", grantError.message);
+  }
 
   const coCommissionerOf = new Set((grants ?? []).map((row) => row.league_id));
 
@@ -55,7 +72,12 @@ export default async function AppNav() {
   // NavBar reads search params, which needs a Suspense boundary.
   return (
     <Suspense fallback={null}>
-      <NavBar email={user.email ?? ""} leagues={leagues} lastLeagueId={lastLeague} />
+      <NavBar
+        email={user.email ?? ""}
+        leagues={leagues}
+        lastLeagueId={lastLeague}
+        failed={Boolean(membershipError)}
+      />
     </Suspense>
   );
 }

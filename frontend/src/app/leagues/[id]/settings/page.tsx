@@ -7,12 +7,13 @@ import { createClient } from "@/lib/supabase/server";
 
 import ManagerAvatar from "@/components/ManagerAvatar";
 
+import PlayoffPreview, { type SeedRow } from "./PlayoffPreview";
 import {
   removeTeam,
   resetLeague,
   setCommissioner,
-  updateLeagueSettings,
   trimSchedule,
+  updateLeagueSettings,
   updateScoringRules,
 } from "./actions";
 
@@ -145,25 +146,38 @@ export default async function SettingsPage({
     .eq("season_id", league.season_id);
 
   const seasonWeeks = seasonWeekCount ?? 0;
-  const teamCount = teams?.length ?? 0;
   const playoffRounds = bracketRounds(league.playoff_teams);
   const regularEnd = seasonWeeks - playoffRounds;
 
-  // Every bracket size the league could actually field, described rather than
-  // numbered: what matters to a commissioner is who gets a bye and who misses
-  // out, not that 6 happens to pad to 8.
-  const playoffChoices = Array.from({ length: Math.max(teamCount - 1, 0) }, (_, i) => i + 2).map(
-    (size) => {
-      const byes = 2 ** bracketRounds(size) - size;
-      const missing = teamCount - size;
-      const parts = [`${size} teams`];
+  // Teams in current standings order — the seeding the bracket would use if the
+  // playoffs started today. A team with no results yet still has a row, so a
+  // league in its first weeks previews sensibly rather than showing an empty
+  // bracket.
+  const { data: standings } = await supabase
+    .from("league_standings")
+    .select("team_id, wins, losses, draws, points_for")
+    .eq("league_id", id)
+    .returns<
+      { team_id: string; wins: number; losses: number; draws: number; points_for: number }[]
+    >();
 
-      if (byes > 0) parts.push(byes === 1 ? "top seed gets a bye" : `top ${byes} seeds get byes`);
-      if (missing > 0) parts.push(missing === 1 ? "last place misses out" : `bottom ${missing} miss out`);
+  const standingOf = new Map((standings ?? []).map((row) => [row.team_id, row]));
 
-      return { teams: size, label: parts.join(" · ") };
-    },
-  );
+  const seededTeams: SeedRow[] = (teams ?? [])
+    .map((team) => {
+      const row = standingOf.get(team.id);
+      return {
+        id: team.id,
+        name: team.name,
+        wins: row?.wins ?? 0,
+        losses: row?.losses ?? 0,
+        draws: row?.draws ?? 0,
+        points_for: row?.points_for ?? 0,
+      };
+    })
+    .sort(
+      (a, b) => b.wins - a.wins || b.points_for - a.points_for || a.id.localeCompare(b.id),
+    );
 
   // Matchups still sitting beyond the new regular season end. Counted rather
   // than assumed: after a trim this is zero, and the button should disappear.
@@ -349,32 +363,19 @@ export default async function SettingsPage({
             <span className="muted">hours before the deadline</span>
           </label>
 
-          {/* One number decides the whole tournament: rounds, byes, and how
-              long the regular season is. "Bye for the top seed" and "last place
-              misses out" are not two modes — they're 7 and 6. */}
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="muted">Playoff teams</span>
-            <select
-              name="playoff_teams"
-              defaultValue={String(league.playoff_teams)}
-              className="select w-full sm:w-72"
-              suppressHydrationWarning
-            >
-              <option value="0">No playoffs — league title only</option>
-              {playoffChoices.map((choice) => (
-                <option key={choice.teams} value={String(choice.teams)}>
-                  {choice.label}
-                </option>
-              ))}
-            </select>
-            <span className="text-xs dim">
-              {league.playoff_teams === 0
-                ? `Every gameweek counts towards the table, through gameweek ${seasonWeeks}.`
-                : `${playoffRounds} playoff round${playoffRounds === 1 ? "" : "s"}, so the ` +
-                  `regular season ends at gameweek ${regularEnd}. Playoff results never ` +
-                  `touch the standings — the league title stays a question of record.`}
-            </span>
-          </label>
+          {/* One number decides the whole tournament: rounds, byes, and how long
+              the regular season is. The preview follows the dropdown rather than
+              the saved value, so sizes can be compared before committing to one. */}
+          <PlayoffPreview
+            seeded={seededTeams}
+            initial={league.playoff_teams}
+            seasonWeeks={seasonWeeks}
+          />
+
+          <p className="text-xs dim">
+            Playoff results never touch the standings — the league title stays a question
+            of record, decided over the regular season alone.
+          </p>
 
           <label className="flex items-center gap-3 text-sm">
             <input
