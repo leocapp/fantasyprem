@@ -12,6 +12,7 @@ import {
   resetLeague,
   setCommissioner,
   updateLeagueSettings,
+  trimSchedule,
   updateScoringRules,
 } from "./actions";
 
@@ -29,8 +30,21 @@ type LeagueRow = {
   carry_forward_lineups: boolean;
   email_reminders: boolean;
   reminder_hours_before: number;
+  playoff_teams: number;
+  consolation: boolean;
+  season_id: string;
   commissioner_id: string;
 };
+
+/** Rounds needed for a bracket of this size, padded to the next power of two. */
+function bracketRounds(teams: number): number {
+  if (teams <= 1) return 0;
+  if (teams <= 2) return 1;
+  if (teams <= 4) return 2;
+  if (teams <= 8) return 3;
+  if (teams <= 16) return 4;
+  return 5;
+}
 
 type RuleRow = {
   id: string;
@@ -89,7 +103,7 @@ export default async function SettingsPage({
   const { data: league } = await supabase
     .from("leagues")
     .select(
-      "id, name, status, join_code, max_teams, roster_size, min_gk, min_def, min_mid, min_fwd, carry_forward_lineups, email_reminders, reminder_hours_before, commissioner_id",
+      "id, name, status, join_code, max_teams, roster_size, min_gk, min_def, min_mid, min_fwd, carry_forward_lineups, email_reminders, reminder_hours_before, playoff_teams, consolation, season_id, commissioner_id",
     )
     .eq("id", id)
     .maybeSingle<LeagueRow>();
@@ -123,6 +137,47 @@ export default async function SettingsPage({
     .select("id, stat_key, applies_to, points")
     .eq("league_id", id)
     .returns<RuleRow[]>();
+
+  // ------------------------------------------------------------ playoffs ----
+  const { count: seasonWeekCount } = await supabase
+    .from("gameweeks")
+    .select("id", { count: "exact", head: true })
+    .eq("season_id", league.season_id);
+
+  const seasonWeeks = seasonWeekCount ?? 0;
+  const teamCount = teams?.length ?? 0;
+  const playoffRounds = bracketRounds(league.playoff_teams);
+  const regularEnd = seasonWeeks - playoffRounds;
+
+  // Every bracket size the league could actually field, described rather than
+  // numbered: what matters to a commissioner is who gets a bye and who misses
+  // out, not that 6 happens to pad to 8.
+  const playoffChoices = Array.from({ length: Math.max(teamCount - 1, 0) }, (_, i) => i + 2).map(
+    (size) => {
+      const byes = 2 ** bracketRounds(size) - size;
+      const missing = teamCount - size;
+      const parts = [`${size} teams`];
+
+      if (byes > 0) parts.push(byes === 1 ? "top seed gets a bye" : `top ${byes} seeds get byes`);
+      if (missing > 0) parts.push(missing === 1 ? "last place misses out" : `bottom ${missing} miss out`);
+
+      return { teams: size, label: parts.join(" · ") };
+    },
+  );
+
+  // Matchups still sitting beyond the new regular season end. Counted rather
+  // than assumed: after a trim this is zero, and the button should disappear.
+  const { count: strandedMatchups } =
+    league.playoff_teams > 0
+      ? await supabase
+          .from("matchups")
+          .select("id, gameweeks!inner(number)", { count: "exact", head: true })
+          .eq("league_id", id)
+          .eq("stage", "regular")
+          .gt("gameweeks.number", regularEnd)
+      : { count: 0 };
+
+  const weeksToTrim = strandedMatchups ?? 0;
 
   const ordered = (rules ?? []).slice().sort((a, b) => {
     const labelA = STAT_LABELS[a.stat_key] ?? a.stat_key;
@@ -294,8 +349,68 @@ export default async function SettingsPage({
             <span className="muted">hours before the deadline</span>
           </label>
 
+          {/* One number decides the whole tournament: rounds, byes, and how
+              long the regular season is. "Bye for the top seed" and "last place
+              misses out" are not two modes — they're 7 and 6. */}
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="muted">Playoff teams</span>
+            <select
+              name="playoff_teams"
+              defaultValue={String(league.playoff_teams)}
+              className="select w-full sm:w-72"
+              suppressHydrationWarning
+            >
+              <option value="0">No playoffs — league title only</option>
+              {playoffChoices.map((choice) => (
+                <option key={choice.teams} value={String(choice.teams)}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs dim">
+              {league.playoff_teams === 0
+                ? `Every gameweek counts towards the table, through gameweek ${seasonWeeks}.`
+                : `${playoffRounds} playoff round${playoffRounds === 1 ? "" : "s"}, so the ` +
+                  `regular season ends at gameweek ${regularEnd}. Playoff results never ` +
+                  `touch the standings — the league title stays a question of record.`}
+            </span>
+          </label>
+
+          <label className="flex items-center gap-3 text-sm">
+            <input
+              name="consolation"
+              type="checkbox"
+              defaultChecked={league.consolation}
+              className="h-4 w-4"
+              suppressHydrationWarning
+            />
+            <span className="muted">
+              Eliminated teams keep playing each other during the playoff weeks
+            </span>
+          </label>
+
           <button className="btn btn-primary self-start">Save league</button>
         </form>
+
+        {/* Deliberately not part of the form above. Changing the setting is
+            reversible; deleting the fixtures at the end of the season is not. */}
+        {league.playoff_teams > 0 && weeksToTrim > 0 ? (
+          <form action={trimSchedule} className="mt-4 border-t border-[var(--border)] pt-4">
+            <input type="hidden" name="league_id" value={league.id} />
+            <p className="text-sm">
+              The schedule still runs past gameweek {regularEnd}, where the regular season
+              now ends. {weeksToTrim} matchup{weeksToTrim === 1 ? "" : "s"} need removing to
+              make room for the bracket.
+            </p>
+            <p className="mt-1 text-xs dim">
+              Only unplayed matchups can go. Do this early — once results exist beyond
+              gameweek {regularEnd} it refuses, and rightly so.
+            </p>
+            <button className="btn btn-ghost btn-sm mt-3">
+              Shorten the regular season
+            </button>
+          </form>
+        ) : null}
       </section>
 
       <section className="card">

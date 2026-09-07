@@ -28,6 +28,8 @@ export async function updateLeagueSettings(formData: FormData) {
       carry_forward_lineups: formData.get("carry_forward_lineups") === "on",
       email_reminders: formData.get("email_reminders") === "on",
       reminder_hours_before: Number(formData.get("reminder_hours_before")) || 4,
+      playoff_teams: Number(formData.get("playoff_teams")) || 0,
+      consolation: formData.get("consolation") === "on",
     })
     .eq("id", leagueId);
 
@@ -40,6 +42,39 @@ export async function updateLeagueSettings(formData: FormData) {
 
   revalidatePath(`/leagues/${leagueId}`, "layout");
   redirect(back(leagueId, "?message=Settings+saved."));
+}
+
+/**
+ * Shorten the regular season to make room for the bracket.
+ *
+ * Separate from saving settings on purpose. Changing playoff_teams is
+ * reversible; deleting the fixtures at the end of the season is not, so it
+ * takes its own deliberate press rather than riding along with a form that also
+ * renames the league.
+ */
+export async function trimSchedule(formData: FormData) {
+  const leagueId = String(formData.get("league_id"));
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("trim_schedule_for_playoffs", {
+    p_league_id: leagueId,
+  });
+
+  if (error) {
+    redirect(back(leagueId, `?error=${encodeURIComponent(error.message)}`));
+  }
+
+  revalidatePath(`/leagues/${leagueId}`, "layout");
+  redirect(
+    back(
+      leagueId,
+      `?message=${encodeURIComponent(
+        Number(data) === 0
+          ? "Schedule already fits — nothing to remove."
+          : `Removed ${data} matchup(s) from the end of the regular season.`,
+      )}`,
+    ),
+  );
 }
 
 export async function setCommissioner(formData: FormData) {
