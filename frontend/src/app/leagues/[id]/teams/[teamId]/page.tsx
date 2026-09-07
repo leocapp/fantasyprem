@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import BackLink from "@/components/BackLink";
 import ManagerAvatar from "@/components/ManagerAvatar";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import ScoringBreakdown, { type Bucket } from "@/components/ScoringBreakdown";
 import { createClient } from "@/lib/supabase/server";
 
 type LeagueRow = { id: string; name: string; status: string };
@@ -131,6 +132,12 @@ export default async function TeamDetailPage({
       .is("dropped_at", null)
       .returns<RosterRow[]>(),
   ]);
+
+  // Returns nothing to anyone outside the league — the guard lives in the
+  // function rather than here, so every caller inherits it.
+  const { data: breakdown } = await supabase.rpc("team_scoring_breakdown", {
+    p_team_id: teamId,
+  });
 
   const schedule = (matchups ?? [])
     .slice()
@@ -261,7 +268,13 @@ export default async function TeamDetailPage({
         </ul>
       </section>
 
-      <section hidden={active !== "squad"}>
+      <section hidden={active !== "squad"} className="flex flex-col gap-7">
+        {/* Above the squad, because "what does this team average, and from
+            where" is the question you came here with — the list of names is the
+            answer to a slower one. */}
+        <ScoringBreakdown buckets={(breakdown ?? []) as Bucket[]} heading="Scoring" />
+
+        <div>
         <h2 className="section-label">
           Squad ({squad.length})
           <span className="ml-2 font-normal dim">
@@ -299,6 +312,7 @@ export default async function TeamDetailPage({
             <li className="row justify-center py-6 text-sm dim">No players yet.</li>
           ) : null}
         </ul>
+        </div>
       </section>
     </main>
   );

@@ -2,12 +2,12 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import AvailabilityKey from "@/components/AvailabilityKey";
+import ScoringBreakdown, { type Bucket } from "@/components/ScoringBreakdown";
 import { formatDeadline, relativeTime } from "@/lib/datetime";
 import { fetchAll } from "@/lib/fetchAll";
 import { createClient } from "@/lib/supabase/server";
 
 import InjuryReserve, { type ReserveEntry } from "./InjuryReserve";
-import ScoringBreakdown, { type Bucket } from "./ScoringBreakdown";
 import PitchLineup, { type Formation, type SquadPlayer } from "./PitchLineup";
 import { saveLineup } from "./actions";
 

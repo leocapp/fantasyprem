@@ -15,20 +15,29 @@ const LABELS: Record<string, string> = {
 const ORDER = ["GK", "DEF", "MID", "FWD"];
 
 /**
- * What the side averages, and where those points come from.
+ * What a side averages, and where those points come from.
  *
- * The bar is share of the team's total, not a score out of anything — the
- * useful comparison is between your own lines, and against how many players
- * each line fields. Three forwards contributing a fifth of the points is a
- * different story from five defenders doing it.
+ * The bar is share of that team's total, not a score out of anything — the
+ * useful comparison is between the lines of one team, and against how many
+ * players each line fields. Three forwards contributing a fifth of the points
+ * is a different story from five defenders doing it.
+ *
+ * Shared by your own team page and any other manager's, so `heading` lets the
+ * caller say whose it is.
  */
-export default function ScoringBreakdown({ buckets }: { buckets: Bucket[] }) {
+export default function ScoringBreakdown({
+  buckets,
+  heading = "Scoring",
+}: {
+  buckets: Bucket[];
+  heading?: string;
+}) {
   const team = buckets.find((row) => row.bucket === "TEAM");
 
   if (!team || team.weeks === 0) {
     return (
       <section>
-        <h2 className="section-label">Scoring</h2>
+        <h2 className="section-label">{heading}</h2>
         <p className="mt-3 text-sm dim">
           Nothing to average yet — this appears once a gameweek has finished.
         </p>
@@ -44,7 +53,7 @@ export default function ScoringBreakdown({ buckets }: { buckets: Bucket[] }) {
 
   return (
     <section>
-      <h2 className="section-label">Scoring</h2>
+      <h2 className="section-label">{heading}</h2>
 
       <div className="mt-3 flex items-baseline gap-3">
         <span className="numeric text-3xl font-bold" style={{ color: "var(--accent-hover)" }}>
@@ -86,10 +95,9 @@ export default function ScoringBreakdown({ buckets }: { buckets: Bucket[] }) {
       </ul>
 
       <p className="mt-2 text-xs dim">
-        Average points per gameweek from each line of the team, and its share of your
-        total. A week with no lineup counts as nothing scored, because it was. The
-        captain&apos;s double belongs to his own position, so the four lines add up to the
-        team figure.
+        Average points per gameweek from each line, and its share of the total. A week with
+        no lineup counts as nothing scored, because it was. The captain&apos;s double
+        belongs to his own position, so the four lines add up to the team figure.
       </p>
     </section>
   );
