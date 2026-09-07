@@ -16,6 +16,8 @@ type MatchupRow = {
   home_points: number;
   away_points: number;
   status: string;
+  stage: string;
+  round: number | null;
   gameweeks: { number: number } | null;
 };
 
@@ -151,7 +153,7 @@ export default async function MatchupPage({
   const { data: matchup } = await supabase
     .from("matchups")
     .select(
-      "id, league_id, gameweek_id, home_team_id, away_team_id, home_points, away_points, status, gameweeks (number)",
+      "id, league_id, gameweek_id, home_team_id, away_team_id, home_points, away_points, status, stage, round, gameweeks (number)",
     )
     .eq("id", matchupId)
     .maybeSingle<MatchupRow>();
@@ -348,6 +350,22 @@ export default async function MatchupPage({
 
   const renderSide = (teamId: string | null, points: number, projection: ReturnType<typeof projectedFor>) => {
     if (!teamId) {
+      // A null opponent means two different things. In the regular season and
+      // the consolation it means the league average. In the bracket it means
+      // nobody — a rested seed who is already through, and who would be
+      // baffled to read that they drew with the field.
+      if (matchup.stage === "playoff") {
+        return (
+          <section className="flex-1">
+            <h2 className="font-semibold">Bye</h2>
+            <p className="mt-1 text-sm dim">
+              Nobody was drawn against this seed in round {matchup.round}. They go through
+              without playing, and nothing here counts towards their score.
+            </p>
+          </section>
+        );
+      }
+
       return (
         <section className="flex-1">
           <div className="flex items-center justify-between gap-2">

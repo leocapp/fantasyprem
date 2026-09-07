@@ -50,6 +50,7 @@ type MatchupRow = {
   home_points: number;
   away_points: number;
   status: string;
+  stage: string;
   gameweeks: { number: number } | null;
 };
 
@@ -176,7 +177,7 @@ export default async function LeaguePage({
         : supabase
             .from("matchups")
             .select(
-              "id, gameweek_id, home_team_id, away_team_id, home_points, away_points, status, gameweeks (number)",
+              "id, gameweek_id, home_team_id, away_team_id, home_points, away_points, status, stage, gameweeks (number)",
             )
             .eq("league_id", id)
             .returns<MatchupRow[]>(),
@@ -439,10 +440,14 @@ export default async function LeaguePage({
                           username={managerOf.get(matchup.away_team_id)}
                           avatarUrl={avatarOf.get(matchup.away_team_id)}
                         />
+                      ) : matchup.stage === "playoff" ? (
+                        // In the bracket a null opponent is nobody, not the
+                        // average — this seed was rested and is already through.
+                        <span className="text-sm dim">Bye</span>
                       ) : (
-                        // A bye has a real opponent now: the average of everyone
-                        // else. It gets a score like any other fixture, so it
-                        // shouldn't read as an empty week.
+                        // Everywhere else a bye has a real opponent: the average
+                        // of everyone else. It gets a score like any other
+                        // fixture, so it shouldn't read as an empty week.
                         <span className="text-sm dim">The field</span>
                       )}
                     </span>
