@@ -13,25 +13,32 @@ export async function updateLeagueSettings(formData: FormData) {
   const leagueId = String(formData.get("league_id"));
   const supabase = await createClient();
 
+  const update: Record<string, unknown> = {
+    name: String(formData.get("name") ?? "").trim(),
+    // Unchecked checkboxes aren't submitted at all.
+    carry_forward_lineups: formData.get("carry_forward_lineups") === "on",
+    email_reminders: formData.get("email_reminders") === "on",
+    reminder_hours_before: Number(formData.get("reminder_hours_before")) || 4,
+    playoff_teams: Number(formData.get("playoff_teams")) || 0,
+  };
+
+  // Squad composition is locked once a league leaves setup, and the form marks
+  // those inputs disabled. A disabled input is not submitted, so reading them
+  // unconditionally produced Number(null) — zero — and every save on an active
+  // league failed on the max_teams check. Absent means "don't touch", which is
+  // what disabling them was trying to say in the first place.
+  for (const field of ["max_teams", "roster_size", "min_gk", "min_def", "min_mid", "min_fwd"]) {
+    const raw = formData.get(field);
+    if (raw === null || raw === "") continue;
+
+    const value = Number(raw);
+    if (Number.isNaN(value)) continue;
+
+    update[field] = value;
+  }
+
   // RLS restricts this to the commissioner; the form is only rendered for them.
-  const { error } = await supabase
-    .from("leagues")
-    .update({
-      name: String(formData.get("name") ?? "").trim(),
-      max_teams: Number(formData.get("max_teams")),
-      roster_size: Number(formData.get("roster_size")),
-      min_gk: Number(formData.get("min_gk")),
-      min_def: Number(formData.get("min_def")),
-      min_mid: Number(formData.get("min_mid")),
-      min_fwd: Number(formData.get("min_fwd")),
-      // Unchecked checkboxes aren't submitted at all.
-      carry_forward_lineups: formData.get("carry_forward_lineups") === "on",
-      email_reminders: formData.get("email_reminders") === "on",
-      reminder_hours_before: Number(formData.get("reminder_hours_before")) || 4,
-      playoff_teams: Number(formData.get("playoff_teams")) || 0,
-      consolation: formData.get("consolation") === "on",
-    })
-    .eq("id", leagueId);
+  const { error } = await supabase.from("leagues").update(update).eq("id", leagueId);
 
   if (error) {
     const message = error.message.includes("roster_size_fits_minimums")
@@ -42,39 +49,6 @@ export async function updateLeagueSettings(formData: FormData) {
 
   revalidatePath(`/leagues/${leagueId}`, "layout");
   redirect(back(leagueId, "?message=Settings+saved."));
-}
-
-/**
- * Shorten the regular season to make room for the bracket.
- *
- * Separate from saving settings on purpose. Changing playoff_teams is
- * reversible; deleting the fixtures at the end of the season is not, so it
- * takes its own deliberate press rather than riding along with a form that also
- * renames the league.
- */
-export async function trimSchedule(formData: FormData) {
-  const leagueId = String(formData.get("league_id"));
-  const supabase = await createClient();
-
-  const { data, error } = await supabase.rpc("trim_schedule_for_playoffs", {
-    p_league_id: leagueId,
-  });
-
-  if (error) {
-    redirect(back(leagueId, `?error=${encodeURIComponent(error.message)}`));
-  }
-
-  revalidatePath(`/leagues/${leagueId}`, "layout");
-  redirect(
-    back(
-      leagueId,
-      `?message=${encodeURIComponent(
-        Number(data) === 0
-          ? "Schedule already fits — nothing to remove."
-          : `Removed ${data} matchup(s) from the end of the regular season.`,
-      )}`,
-    ),
-  );
 }
 
 export async function setCommissioner(formData: FormData) {

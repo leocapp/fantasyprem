@@ -64,7 +64,10 @@ export default function PlayoffPreview({
   const rounds = bracketRounds(size);
   const bracket = 2 ** rounds;
   const byes = size > 0 ? bracket - size : 0;
-  const regularEnd = seasonWeeks - rounds;
+  // The bracket occupies the closing weeks; the league programme keeps running
+  // through them, so this is where the bracket starts rather than where the
+  // season stops.
+  const playoffStart = seasonWeeks - rounds + 1;
 
   const choices = Array.from({ length: Math.max(seeded.length - 1, 0) }, (_, i) => i + 2);
 
@@ -145,8 +148,7 @@ export default function PlayoffPreview({
 
       {size === 0 ? (
         <p className="text-xs dim">
-          Every gameweek counts towards the table, through gameweek {seasonWeeks}. One
-          trophy, decided on record.
+          One trophy, decided on record over all {seasonWeeks} gameweeks.
         </p>
       ) : (
         <div className="rounded-lg border border-[var(--border)] p-3">
@@ -162,7 +164,7 @@ export default function PlayoffPreview({
                 <div key={round} className="flex min-w-[13rem] flex-1 flex-col">
                   <p className="text-[10px] uppercase tracking-wide dim">
                     {roundName(round, rounds)}
-                    <span className="ml-1 normal-case">· GW{regularEnd + round}</span>
+                    <span className="ml-1 normal-case">· GW{playoffStart + round - 1}</span>
                   </p>
 
                   <div className="mt-1.5 flex flex-1 flex-col justify-around gap-2">
@@ -209,8 +211,10 @@ export default function PlayoffPreview({
             {byes > 0
               ? `${byes === 1 ? "One team rests" : `${byes} teams rest`} in round one — a bracket of ${bracket} with ${size} in it. `
               : ""}
-            Regular season ends at gameweek {regularEnd}. Seeding is today&apos;s table and
-            will move; nothing locks until every regular-season fixture is final.
+            League fixtures continue through gameweek {seasonWeeks} alongside the bracket,
+            so nobody has a dead week and the table is still decided on the final day.
+            Seeding is today&apos;s standings and will move — it locks when the bracket
+            opens in gameweek {playoffStart}.
           </p>
         </div>
       )}

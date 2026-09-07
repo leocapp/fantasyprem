@@ -47,13 +47,13 @@ begin
   insert into leagues (
     name, season_id, commissioner_id, join_code, max_teams,
     roster_size, min_gk, min_def, min_mid, min_fwd,
-    status, playoff_teams, consolation
+    status, playoff_teams
   )
   values (
     'DRY RUN — delete me', v_season, v_owners[1],
     upper(substr(md5(random()::text), 1, 6)), 12,
     17, 2, 3, 3, 3,
-    'active', v_playoff_teams, true
+    'active', v_playoff_teams
   )
   returning id into v_league;
 
@@ -66,24 +66,26 @@ begin
     from fantasy_teams where league_id = v_league;
 
   v_rounds := playoff_rounds(v_playoff_teams);
-  v_last := regular_season_end(v_league);
+  v_last := playoff_start_week(v_league);
 
   v_report := format(
-    E'Bracket of %s from %s teams, %s round(s).\nRegular season ends at gameweek %s.\n',
+    E'Bracket of %s from %s teams, %s round(s), opening in gameweek %s.\nThe league programme runs to the end regardless.\n',
     power(2, v_rounds)::integer, v_playoff_teams, v_rounds, v_last
   );
 
-  -- --- a finished regular season -------------------------------------------
   perform generate_schedule(v_league);
 
   v_report := v_report || format(
-    E'Schedule: %s matchups across gameweeks 1-%s.\n\n',
-    (select count(*) from matchups where league_id = v_league), v_last
+    E'Schedule: %s league matchups across the whole season.\n\n',
+    (select count(*) from matchups where league_id = v_league)
   );
 
-  -- Team 1 beats everyone, team 7 loses to everyone, and so on down. Contrived
-  -- on purpose: it makes the seeding entirely predictable, so anything odd in
-  -- the bracket below is the bracket's doing and not the scoring's.
+  -- Only up to the week the bracket opens. The fixtures during the bracket are
+  -- left unplayed on purpose: seeding must not wait for them, and this is where
+  -- the old sequential design would have hung forever.
+  --
+  -- Team 1 beats everyone, team 7 loses to everyone, so the seeding is entirely
+  -- predictable and anything odd below is the bracket's doing, not the scoring's.
   update matchups m
      set status = 'final',
          home_points = 100 - array_position(v_teams, m.home_team_id),
@@ -91,7 +93,11 @@ begin
                          when m.away_team_id is null then 96
                          else 100 - array_position(v_teams, m.away_team_id)
                        end
-   where m.league_id = v_league and m.stage = 'regular';
+    from gameweeks g
+   where g.id = m.gameweek_id
+     and m.league_id = v_league
+     and m.stage = 'regular'
+     and g.number < v_last;
 
   -- --- run the tournament ---------------------------------------------------
   for i in 1 .. v_rounds loop
@@ -123,16 +129,24 @@ begin
       );
     end loop;
 
-    for v_row in
-      select h.name as home, coalesce(a.name, 'the field') as away
-        from matchups m
-        join fantasy_teams h on h.id = m.home_team_id
-        left join fantasy_teams a on a.id = m.away_team_id
-       where m.league_id = v_league and m.stage = 'consolation' and m.round = i
-       order by m.bracket_slot
-    loop
-      v_report := v_report || format(E'  consolation: %s v %s\n', v_row.home, v_row.away);
-    end loop;
+    -- The point of the whole rework: the same gameweek also holds a full round
+    -- of league fixtures, and every team appears in one.
+    v_report := v_report || format(
+      E'  alongside: %s league fixture(s) the same week, %s team(s) involved\n',
+      (select count(*) from matchups m
+         join gameweeks g on g.id = m.gameweek_id
+        where m.league_id = v_league and m.stage = 'regular' and g.number = v_last + i - 1),
+      (select count(distinct t) from (
+         select m.home_team_id as t from matchups m
+           join gameweeks g on g.id = m.gameweek_id
+          where m.league_id = v_league and m.stage = 'regular' and g.number = v_last + i - 1
+          union
+         select m.away_team_id from matchups m
+           join gameweeks g on g.id = m.gameweek_id
+          where m.league_id = v_league and m.stage = 'regular'
+            and g.number = v_last + i - 1 and m.away_team_id is not null
+       ) as involved)
+    );
 
     -- Three different outcomes on purpose: a favourite winning, an upset, and a
     -- draw that has to be broken on seed. A rehearsal where the better team
@@ -160,17 +174,27 @@ begin
     coalesce((select name from fantasy_teams where id = v_champion), 'NOBODY — check the final')
   );
 
-  -- The point of keeping them apart. A bracket run must leave the table alone.
+  -- Finish the league programme, including the weeks the bracket was played in.
+  -- This is the season ending, and the table should now count every gameweek.
+  update matchups m
+     set status = 'final',
+         home_points = 100 - array_position(v_teams, m.home_team_id),
+         away_points = case
+                         when m.away_team_id is null then 96
+                         else 100 - array_position(v_teams, m.away_team_id)
+                       end
+   where m.league_id = v_league and m.stage = 'regular' and m.status <> 'final';
+
   v_report := v_report || format(
-    E'Standings still count %s game(s) — playoff and consolation excluded.\n',
+    E'Standings count %s game(s) after the final day — bracket results excluded.\n',
     (select coalesce(max(games_played), 0) from league_standings where league_id = v_league)
   );
 
   v_report := v_report || format(
-    E'Seeds frozen: %s. Playoff matchups: %s. Consolation: %s.\n',
+    E'Seeds frozen: %s. Bracket ties: %s. League fixtures: %s.\n',
     (select count(*) from playoff_seeds where league_id = v_league),
     (select count(*) from matchups where league_id = v_league and stage = 'playoff'),
-    (select count(*) from matchups where league_id = v_league and stage = 'consolation')
+    (select count(*) from matchups where league_id = v_league and stage = 'regular')
   );
 
   -- Rolls everything back. The word ERROR below is the success condition.

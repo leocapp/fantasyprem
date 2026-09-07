@@ -9,7 +9,6 @@ type LeagueRow = {
   name: string;
   status: string;
   playoff_teams: number;
-  consolation: boolean;
 };
 
 type TeamRow = {
@@ -77,7 +76,7 @@ export default async function PlayoffsPage({
 
   const { data: league } = await supabase
     .from("leagues")
-    .select("id, name, status, playoff_teams, consolation")
+    .select("id, name, status, playoff_teams")
     .eq("id", id)
     .maybeSingle<LeagueRow>();
 
@@ -113,9 +112,11 @@ export default async function PlayoffsPage({
         .returns<BracketMatchup[]>(),
     ]);
 
-  const { data: regularEnd } = await supabase.rpc("regular_season_end", {
+  const { data: playoffStart } = await supabase.rpc("playoff_start_week", {
     p_league_id: id,
   });
+
+  const startWeek = Number(playoffStart ?? 0);
 
   const nameOf = new Map((teams ?? []).map((team) => [team.id, team.name]));
   const managerOf = new Map(
@@ -146,7 +147,6 @@ export default async function PlayoffsPage({
   for (const [teamId, seed] of seedOf) teamAtSeed.set(seed, teamId);
 
   const playoffGames = (bracket ?? []).filter((row) => row.stage === "playoff");
-  const consolationGames = (bracket ?? []).filter((row) => row.stage === "consolation");
 
   const bySlot = new Map<string, BracketMatchup>();
   for (const game of playoffGames) {
@@ -207,8 +207,9 @@ export default async function PlayoffsPage({
             ? "Switched off for this league — the title goes to the best record."
             : `Top ${league.playoff_teams} of ${teams?.length ?? 0}, ${rounds} round${
                 rounds === 1 ? "" : "s"
-              }, starting gameweek ${(regularEnd ?? 0) + 1}. The league title is decided ` +
-              `separately, on record alone — playoff results never touch the table.`}
+              }, from gameweek ${startWeek}. League fixtures carry on alongside, off the ` +
+              `same weekly scores, so the table is still decided on the final day and ` +
+              `playoff results never touch it.`}
         </p>
       </div>
 
@@ -258,7 +259,7 @@ export default async function PlayoffsPage({
                     <p className="text-xs uppercase tracking-wide dim">
                       {roundName(round, rounds)}
                       <span className="ml-1.5 normal-case">
-                        · GW {(regularEnd ?? 0) + round}
+                        · GW {startWeek + round - 1}
                       </span>
                     </p>
 
@@ -355,42 +356,11 @@ export default async function PlayoffsPage({
             </ul>
           </section>
 
-          {league.consolation && consolationGames.length > 0 ? (
-            <section>
-              <h2 className="section-label">Consolation</h2>
-              <ul className="list mt-3">
-                {consolationGames
-                  .slice()
-                  .sort((a, b) => (a.round ?? 0) - (b.round ?? 0) || (a.bracket_slot ?? 0) - (b.bracket_slot ?? 0))
-                  .map((game) => (
-                    <li key={game.id}>
-                      <Link href={`/leagues/${id}/matchups/${game.id}`} className="row-link gap-2">
-                        <span className="numeric w-10 text-xs dim">
-                          GW{game.gameweeks?.number}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm">
-                          {nameOf.get(game.home_team_id) ?? "—"}
-                          <span className="dim"> v </span>
-                          {game.away_team_id
-                            ? (nameOf.get(game.away_team_id) ?? "—")
-                            : "the field"}
-                        </span>
-                        <span className="numeric text-sm">
-                          {game.status === "final"
-                            ? `${game.home_points} – ${game.away_points}`
-                            : ""}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-              </ul>
-              <p className="mt-2 text-xs dim">
-                Teams out of the bracket keep playing each other, paired by finishing
-                position. With an odd number left over, whoever is spare plays the league
-                average — the same opponent a bye week gives you.
-              </p>
-            </section>
-          ) : null}
+          <p className="text-xs dim">
+            Nobody is idle during the bracket. Everyone still plays their league fixture
+            each week — including teams knocked out, and teams who never qualified — so the
+            table keeps moving right through to gameweek {startWeek + rounds - 1}.
+          </p>
         </>
       )}
     </main>
