@@ -76,9 +76,22 @@ export default function NavBar({
   const linkClass = dense ? "px-1.5 py-1 text-[13px]" : "px-2 py-1.5 text-sm";
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg)]/95 backdrop-blur">
+    // Installed on an iPhone the status bar is translucent and the page runs
+    // underneath it, so without this the first row of the nav sits beneath the
+    // clock and the battery — visible, and untappable. env() resolves to zero
+    // in a browser, so the padding only exists where the notch does.
+    <header
+      className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg)]/95 backdrop-blur"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
       {/* Wider than the page container: a commissioner sees eight links. */}
-      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3">
+      <div
+        className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3"
+        style={{
+          paddingLeft: "max(1rem, env(safe-area-inset-left))",
+          paddingRight: "max(1rem, env(safe-area-inset-right))",
+        }}
+      >
         {/* An empty nav used to be indistinguishable from a broken query. It
             says which now. */}
         {failed ? (
