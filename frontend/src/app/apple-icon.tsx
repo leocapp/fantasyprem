@@ -1,14 +1,16 @@
 import { ImageResponse } from "next/og";
 
+import { BALL_DATA_URL } from "@/lib/ballIcon";
+
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
 /**
  * iOS home screen icon.
  *
- * Separate from icon.tsx because iOS applies its own rounded mask and does not
- * honour `purpose: maskable`, so this one fills the square rather than sitting
- * in a safe zone — an icon padded for Android looks lost on an iPhone.
+ * Separate from icon.tsx because iOS applies its own rounded mask and ignores
+ * `purpose: maskable`, so the ball fills more of the square here — an icon
+ * padded for Android's launcher looks lost on an iPhone.
  *
  * Opaque, because iOS composites transparency onto black rather than the
  * wallpaper, which turns a transparent corner into a visible notch.
@@ -23,14 +25,11 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#34d399",
-          color: "#04231a",
-          fontSize: 86,
-          fontWeight: 700,
-          letterSpacing: -4,
+          background: "#0f172a",
         }}
       >
-        FB
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={BALL_DATA_URL} width={140} height={140} alt="" />
       </div>
     ),
     { ...size },
