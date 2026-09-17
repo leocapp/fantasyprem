@@ -334,15 +334,28 @@ def has_left(player: dict[str, Any], club_sportmonks_id: str) -> bool:
     and roster, while wrongly keeping one costs a manager a pick. The same
     caution applies to a loan: the loan spell starts later, so the borrowing
     club wins, which is what we want.
+
+    TURNED OFF. The rule above is wrong, and it took a month to show it.
     """
-    memberships = player.get("teams") or []
-
-    dated = [row for row in memberships if row.get("start")]
-    if not dated:
-        return False
-
-    latest = max(dated, key=lambda row: str(row["start"]))
-    return str(latest.get("team_id")) != str(club_sportmonks_id)
+    # player.teams is membership history in general, not club history: it
+    # includes national-team call-ups. So an international break hands half the
+    # league a membership newer than their club's, and every one of them reads
+    # as having transferred out.
+    #
+    # In September 2026 it deactivated sixty players — Saka, Saliba, Pickford,
+    # Dalot, Sánchez — across nine different clubs. That spread is what told it
+    # apart from a partial squad response, which would have hit one club at a
+    # time. They vanished from the player list while staying on rosters, and the
+    # free agents page reported them as having left the league.
+    #
+    # Telling a country from a club needs a field we don't currently request,
+    # and guessing which one is the mistake this project has paid for before. So
+    # until probe_departures answers it, the asymmetry in the docstring decides:
+    # wrongly keeping a departed player costs one manager one pick, and wrongly
+    # dropping a real one removes him from everywhere at once.
+    #
+    # The cost of this is that a Casemiro lingers in the pool until it's fixed.
+    return False
 
 
 def player_rows(
@@ -744,6 +757,25 @@ def main(argv: list[str] | None = None) -> int:
                     "player_club_changes",
                     changes,
                     on_conflict="player_id,from_club_id,to_club_id,kind",
+                )
+
+            # A player in a squad has not left the league, whatever we recorded
+            # earlier. The has_left bug wrote seventy-seven departures for
+            # players who were on international duty, and without this the
+            # transfers panel would keep reporting them long after the cause was
+            # fixed. Cheap, and it makes a wrong call self-correcting rather
+            # than permanent.
+            returned = [
+                player_ids[sportmonks_id]
+                for sportmonks_id in seen
+                if sportmonks_id in player_ids
+            ]
+
+            if returned:
+                db.delete(
+                    "player_club_changes",
+                    kind="eq.left",
+                    player_id=f"in.({','.join(returned)})",
                 )
 
             phase.mark("transfers", f"{len(changes)} club change(s)")

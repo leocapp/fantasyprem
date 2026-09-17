@@ -141,6 +141,25 @@ class SupabaseRest:
         if response.is_error:
             raise RuntimeError(f"{table} update failed ({response.status_code}): {response.text}")
 
+    def delete(self, table: str, **filters: str) -> None:
+        """Remove rows matching the filters.
+
+        Filters are required and not defaulted. PostgREST will happily delete
+        every row in a table given no filter at all, and a typo in a keyword
+        argument would otherwise be indistinguishable from meaning it.
+        """
+        if not filters:
+            raise ValueError(f"Refusing to delete from {table} with no filter.")
+
+        response = self._send(
+            "DELETE",
+            f"/{table}",
+            params=filters,
+            headers={"Prefer": "return=minimal"},
+        )
+        if response.is_error:
+            raise RuntimeError(f"{table} delete failed ({response.status_code}): {response.text}")
+
     def rpc(self, function: str, args: dict[str, Any]) -> Any:
         """Call a Postgres function through PostgREST."""
         response = self._send("POST", f"/rpc/{function}", json=args)
